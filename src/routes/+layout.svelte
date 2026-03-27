@@ -31,12 +31,12 @@
   let initialized = $state(false);
 
   const navItems = [
-    { href: "/", label: "Home", icon: HomeIcon },
-    { href: "/workout", label: "Workout", icon: DumbbellIcon },
-    { href: "/history", label: "History", icon: ChartNoAxesCombinedIcon },
-    { href: "/food", label: "Food", icon: UtensilsIcon },
-    { href: "/biomarkers", label: "Labs", icon: FlaskConicalIcon },
-    { href: "/settings", label: "Settings", icon: SettingsIcon },
+    { href: `${base}/`, label: "Home", icon: HomeIcon },
+    { href: `${base}/workout`, label: "Workout", icon: DumbbellIcon },
+    { href: `${base}/history`, label: "History", icon: ChartNoAxesCombinedIcon },
+    { href: `${base}/food`, label: "Food", icon: UtensilsIcon },
+    { href: `${base}/biomarkers`, label: "Labs", icon: FlaskConicalIcon },
+    { href: `${base}/settings`, label: "Settings", icon: SettingsIcon },
   ];
 
   async function init() {

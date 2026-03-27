@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { workoutStore } from "$lib/stores/workout.svelte";
   import WorkoutSummary from "$lib/components/WorkoutSummary.svelte";
   import ProgressChart from "$lib/components/ProgressChart.svelte";
@@ -303,7 +304,7 @@
       <Card.Content class="py-12 text-center">
         <DumbbellIcon class="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
         <p class="text-muted-foreground mb-4">No workouts recorded yet.</p>
-        <Button href="/">Start Your First Workout</Button>
+        <Button href="{base}/">Start Your First Workout</Button>
       </Card.Content>
     </Card.Root>
   {:else}
