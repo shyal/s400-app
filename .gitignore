@@ -1,1 +1,4 @@
-node_modules\nbuild\n.svelte-kit\n.env
+node_modules
+build
+.svelte-kit
+.env
