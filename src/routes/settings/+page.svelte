@@ -4,6 +4,7 @@
   import { exportData, importData } from "$lib/utils/storage";
   import { authStore } from "$lib/stores/auth.svelte";
   import { goto } from "$app/navigation";
+  import { base } from "$app/paths";
   import {
     upsertWorkout,
     upsertExerciseProgress,
@@ -831,7 +832,7 @@
         class="btn bg-slate-700 w-full"
         onclick={async () => {
           await authStore.signOut();
-          goto("/login");
+          goto(`${base}/login`);
         }}
       >
         Sign Out

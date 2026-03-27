@@ -7,6 +7,7 @@
   import ExerciseCard from "$lib/components/ExerciseCard.svelte";
   import Timer from "$lib/components/Timer.svelte";
   import { goto } from "$app/navigation";
+  import { base } from "$app/paths";
   import { toast } from "svelte-sonner";
 
   import * as Card from "$lib/components/ui/card";
@@ -97,14 +98,14 @@
     workoutStore.completeWorkout();
     timerStore.reset();
     toast.success("Workout complete! Great job!");
-    goto("/");
+    goto(`${base}/`);
   }
 
   function cancelWorkout() {
     workoutStore.cancelWorkout();
     timerStore.reset();
     toast("Workout discarded");
-    goto("/");
+    goto(`${base}/`);
   }
 </script>
 

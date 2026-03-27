@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { base } from "$app/paths";
   import { authStore } from "$lib/stores/auth.svelte";
 
   let token = $state("");
@@ -11,7 +12,7 @@
     loading = true;
     const ok = await authStore.login(token.trim());
     if (ok) {
-      goto("/");
+      goto(`${base}/`);
     } else {
       error = "Invalid token or unauthorized GitHub account.";
     }

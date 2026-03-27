@@ -2,6 +2,7 @@
   import "../app.css";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import { base } from "$app/paths";
   import { authStore } from "$lib/stores/auth.svelte";
   import { workoutStore } from "$lib/stores/workout.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
@@ -65,9 +66,9 @@
     if (
       initialized &&
       !authStore.isAuthenticated &&
-      $page.url.pathname !== "/login"
+      $page.url.pathname !== `${base}/login`
     ) {
-      goto("/login");
+      goto(`${base}/login`);
     }
   });
 </script>
@@ -76,7 +77,7 @@
   <div class="min-h-screen flex items-center justify-center bg-background">
     <p class="text-muted-foreground">Loading...</p>
   </div>
-{:else if !authStore.isAuthenticated && $page.url.pathname !== "/login"}
+{:else if !authStore.isAuthenticated && $page.url.pathname !== `${base}/login`}
   <div class="min-h-screen flex items-center justify-center bg-background">
     <p class="text-muted-foreground">Redirecting...</p>
   </div>
@@ -87,7 +88,7 @@
       {@render children()}
     </main>
 
-    {#if $page.url.pathname !== "/login"}
+    {#if $page.url.pathname !== `${base}/login`}
       <nav
         class="fixed bottom-0 left-0 right-0 bg-background border-t border-border safe-area-pb"
         style="z-index: 10;"
