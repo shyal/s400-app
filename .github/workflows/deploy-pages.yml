@@ -34,7 +34,7 @@ jobs:
         working-directory: .
         env:
           GITHUB_PAGES: true
-          VITE_GITHUB_USERNAME: ${{ vars.GITHUB_USERNAME }}
+          VITE_GITHUB_USERNAME: ${{ vars.APP_GITHUB_USERNAME }}
         run: npm run build
 
       - name: Upload artifact
