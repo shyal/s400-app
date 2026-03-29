@@ -1,11 +1,10 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import {
-    push as syncPush,
     pull as syncPull,
     getSyncStatus,
   } from "$lib/db/github-sync";
-  import { isDirty, exportBytes, queryAll, queryOne } from "supahub";
+  import { isDirty, exportBytes, queryAll, queryOne, push as supahubPush } from "supahub";
 
   let open = $state(false);
   let logs = $state<{ time: string; level: string; msg: string }[]>([]);
@@ -188,7 +187,7 @@
     pushing = true;
     log("info", "Force pushing...");
     try {
-      const result = await syncPush();
+      const result = await supahubPush({ force: true });
       if (result.success) {
         log("info", "Push succeeded ✓");
       } else {
