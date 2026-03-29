@@ -2,6 +2,7 @@
   import type { WeightEntry, SimulationResult } from "$lib/types";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
+  import { bSplinePath } from "$lib/utils/spline.js";
   import TrendingUpIcon from "@lucide/svelte/icons/trending-up";
   import TrendingDownIcon from "@lucide/svelte/icons/trending-down";
 
@@ -18,6 +19,10 @@
     errorMargin?: number;
     projection?: SimulationResult;
     movingAverageWindow?: number;
+    movingAverageType?: "sma" | "ema" | "spline";
+    /** Optional goal value — renders a horizontal goal line */
+    goalValue?: number;
+    goalColor?: string;
   }
 
   let {
@@ -31,6 +36,9 @@
     errorMargin = 0,
     projection,
     movingAverageWindow = 7,
+    movingAverageType = "ema",
+    goalValue,
+    goalColor = "oklch(0.72 0.19 155)",
   }: Props = $props();
 
   const pad = { top: 10, right: 4, bottom: 18, left: 28 };
@@ -85,6 +93,7 @@
         if (projKey.lower) allVals.push((p as any)[projKey.lower] as number);
       }
     }
+    if (goalValue != null) allVals.push(goalValue);
     const lo = Math.min(...allVals) - errorMargin;
     const hi = Math.max(...allVals) + errorMargin;
     const margin = Math.max((hi - lo) * 0.08, 0.3);
@@ -126,6 +135,14 @@
   const movingAvg = $derived.by(() => {
     if (values.length < 2) return [];
     const window = movingAverageWindow;
+    if (movingAverageType === "ema") {
+      const k = 2 / (window + 1);
+      const result: number[] = [values[0]];
+      for (let i = 1; i < values.length; i++) {
+        result.push(values[i] * k + result[i - 1] * (1 - k));
+      }
+      return result;
+    }
     return values.map((_, i) => {
       const start = Math.max(0, i - window + 1);
       const slice = values.slice(start, i + 1);
@@ -134,10 +151,20 @@
   });
 
   const avgLine = $derived.by(() => {
+    if (movingAverageType === "spline") return "";
     if (movingAvg.length < 2) return "";
     return movingAvg
       .map((v, i) => `${dateToX(sorted[i].date)},${scaleY(v)}`)
       .join(" ");
+  });
+
+  const splinePath = $derived.by(() => {
+    if (movingAverageType !== "spline" || sorted.length < 2) return "";
+    const points = sorted.map((e, i) => ({
+      x: dateToX(e.date),
+      y: scaleY(values[i]),
+    }));
+    return bSplinePath(points, movingAverageWindow);
   });
 
   const dataLine = $derived(
@@ -292,8 +319,39 @@
           <path d={errorBandPath} fill={color} opacity="0.12" />
         {/if}
 
-        <!-- Moving average line -->
-        {#if avgLine}
+        <!-- Goal line -->
+        {#if goalValue != null}
+          <line
+            x1={pad.left}
+            y1={scaleY(goalValue)}
+            x2={chartW - pad.right}
+            y2={scaleY(goalValue)}
+            stroke={goalColor}
+            stroke-width="0.5"
+            stroke-dasharray="4,3"
+          />
+          <text
+            x={chartW - pad.right - 1}
+            y={scaleY(goalValue) - 2}
+            text-anchor="end"
+            fill={goalColor}
+            font-size="5"
+            font-weight="600">{goalValue}{unit}</text
+          >
+        {/if}
+
+        <!-- Trend line (MA or spline) -->
+        {#if splinePath}
+          <path
+            d={splinePath}
+            fill="none"
+            stroke={color}
+            stroke-width="1.2"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            opacity="0.9"
+          />
+        {:else if avgLine}
           <polyline
             points={avgLine}
             fill="none"

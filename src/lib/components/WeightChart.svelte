@@ -2,6 +2,7 @@
   import type { WeightEntry, Workout, SimulationResult } from "$lib/types";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
+  import { bSplinePath } from "$lib/utils/spline.js";
 
   import ScaleIcon from "@lucide/svelte/icons/scale";
   import TrendingDownIcon from "@lucide/svelte/icons/trending-down";
@@ -16,6 +17,7 @@
     startingKg?: number;
     projection?: SimulationResult;
     movingAverageWindow?: number;
+    movingAverageType?: "sma" | "ema" | "spline";
   }
 
   let {
@@ -26,6 +28,7 @@
     startingKg = 86.4,
     projection,
     movingAverageWindow = 7,
+    movingAverageType = "ema",
   }: Props = $props();
 
   const pad = { top: 10, right: 4, bottom: 18, left: 28 };
@@ -39,15 +42,26 @@
   // Workout dates as a Set for O(1) lookup
   const gymDates = $derived(new Set(workouts.map((w) => w.date)));
 
-  // Configurable moving average
+  // Configurable moving average (SMA or EMA)
   const movingAvg = $derived.by(() => {
     if (sorted.length < 2) return [];
     const window = movingAverageWindow;
+
+    if (movingAverageType === "ema") {
+      // EMA: smoothing factor = 2 / (window + 1), hugs recent data tighter
+      const k = 2 / (window + 1);
+      const result: number[] = [sorted[0].weight_kg];
+      for (let i = 1; i < sorted.length; i++) {
+        result.push(sorted[i].weight_kg * k + result[i - 1] * (1 - k));
+      }
+      return result;
+    }
+
+    // SMA: trailing simple moving average
     return sorted.map((_, i) => {
       const start = Math.max(0, i - window + 1);
       const slice = sorted.slice(start, i + 1);
-      const avg = slice.reduce((s, e) => s + e.weight_kg, 0) / slice.length;
-      return avg;
+      return slice.reduce((s, e) => s + e.weight_kg, 0) / slice.length;
     });
   });
 
@@ -139,10 +153,20 @@
   );
 
   const avgLine = $derived.by(() => {
+    if (movingAverageType === "spline") return "";
     if (movingAvg.length < 2) return "";
     return movingAvg
       .map((v, i) => `${dateToX(sorted[i].date)},${scaleY(v)}`)
       .join(" ");
+  });
+
+  const splinePath = $derived.by(() => {
+    if (movingAverageType !== "spline" || sorted.length < 2) return "";
+    const points = sorted.map((e) => ({
+      x: dateToX(e.date),
+      y: scaleY(e.weight_kg),
+    }));
+    return bSplinePath(points, movingAverageWindow);
   });
 
   const yTicks = $derived.by(() => {
@@ -316,8 +340,18 @@
           <path d={areaPath} fill="url(#weightFill)" />
         {/if}
 
-        <!-- 7-day moving average -->
-        {#if avgLine}
+        <!-- Trend line (MA or spline) -->
+        {#if splinePath}
+          <path
+            d={splinePath}
+            fill="none"
+            stroke="oklch(0.62 0.17 250)"
+            stroke-width="1.2"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            opacity="0.9"
+          />
+        {:else if avgLine}
           <polyline
             points={avgLine}
             fill="none"
@@ -446,7 +480,9 @@
         </span>
         <span class="flex items-center gap-1.5">
           <span class="w-4 h-0.5 rounded-full bg-blue-500 inline-block"></span>
-          {movingAverageWindow}-day avg
+          {movingAverageType === "spline"
+            ? "Spline"
+            : `${movingAverageWindow}-day ${movingAverageType === "ema" ? "EMA" : "SMA"}`}
         </span>
         <span class="flex items-center gap-1.5">
           <span

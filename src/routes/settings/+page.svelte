@@ -379,19 +379,149 @@
   </div>
 
   <div class="card">
+    <h2 class="font-bold mb-4">Goals</h2>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm text-slate-400 mb-2" for="goal-weight">
+          Weight: <span class="text-white font-medium"
+            >{settingsStore.value.goalWeightKg ?? 73} kg</span
+          >
+        </label>
+        <input
+          id="goal-weight"
+          type="range"
+          min="60"
+          max="90"
+          step="0.5"
+          value={settingsStore.value.goalWeightKg ?? 73}
+          oninput={(e) =>
+            settingsStore.update({
+              goalWeightKg: parseFloat(e.currentTarget.value),
+            })}
+          class="w-full"
+        />
+        <div class="flex justify-between text-xs text-slate-500">
+          <span>60 kg</span>
+          <span>90 kg</span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm text-slate-400 mb-2" for="goal-bf">
+          Body Fat: <span class="text-white font-medium"
+            >{settingsStore.value.goalBodyFatPct ?? 15}%</span
+          >
+        </label>
+        <input
+          id="goal-bf"
+          type="range"
+          min="8"
+          max="25"
+          step="0.5"
+          value={settingsStore.value.goalBodyFatPct ?? 15}
+          oninput={(e) =>
+            settingsStore.update({
+              goalBodyFatPct: parseFloat(e.currentTarget.value),
+            })}
+          class="w-full"
+        />
+        <div class="flex justify-between text-xs text-slate-500">
+          <span>8%</span>
+          <span>25%</span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm text-slate-400 mb-2" for="goal-vf">
+          Visceral Fat: <span class="text-white font-medium"
+            >{settingsStore.value.goalVisceralFat ?? 8}</span
+          >
+        </label>
+        <input
+          id="goal-vf"
+          type="range"
+          min="1"
+          max="15"
+          step="0.5"
+          value={settingsStore.value.goalVisceralFat ?? 8}
+          oninput={(e) =>
+            settingsStore.update({
+              goalVisceralFat: parseFloat(e.currentTarget.value),
+            })}
+          class="w-full"
+        />
+        <div class="flex justify-between text-xs text-slate-500">
+          <span>1</span>
+          <span>15</span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm text-slate-400 mb-2">
+          Primary Goal Metric
+        </label>
+        <div class="flex gap-2">
+          <button
+            class="flex-1 py-2 rounded-lg text-sm transition-colors"
+            class:bg-blue-600={(settingsStore.value.goalMode ??
+              "visceral_fat") === "weight"}
+            class:bg-slate-700={(settingsStore.value.goalMode ??
+              "visceral_fat") !== "weight"}
+            onclick={() => settingsStore.update({ goalMode: "weight" })}
+          >
+            Weight
+          </button>
+          <button
+            class="flex-1 py-2 rounded-lg text-sm transition-colors"
+            class:bg-blue-600={(settingsStore.value.goalMode ??
+              "visceral_fat") === "body_fat"}
+            class:bg-slate-700={(settingsStore.value.goalMode ??
+              "visceral_fat") !== "body_fat"}
+            onclick={() => settingsStore.update({ goalMode: "body_fat" })}
+          >
+            Body Fat
+          </button>
+          <button
+            class="flex-1 py-2 rounded-lg text-sm transition-colors"
+            class:bg-blue-600={(settingsStore.value.goalMode ??
+              "visceral_fat") === "visceral_fat"}
+            class:bg-slate-700={(settingsStore.value.goalMode ??
+              "visceral_fat") !== "visceral_fat"}
+            onclick={() => settingsStore.update({ goalMode: "visceral_fat" })}
+          >
+            Visceral Fat
+          </button>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">
+          Controls which metric the countdown widget tracks on the home screen.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2 class="font-bold mb-4">Weight Chart</h2>
 
     <div class="space-y-4">
       <div>
         <label class="block text-sm text-slate-400 mb-2" for="ma-window">
-          Moving Average: <span class="text-white font-medium"
-            >{settingsStore.value.movingAverageWindow ?? 7} days</span
+          {(settingsStore.value.movingAverageType ?? "ema") === "spline"
+            ? "Smoothing"
+            : "Moving Average"}:
+          <span class="text-white font-medium"
+            >{settingsStore.value.movingAverageWindow ?? 7}{(settingsStore.value
+              .movingAverageType ?? "ema") === "spline"
+              ? ""
+              : " days"}</span
           >
         </label>
         <input
           id="ma-window"
           type="range"
-          min="3"
+          min={(settingsStore.value.movingAverageType ?? "ema") === "spline"
+            ? "1"
+            : "3"}
           max="21"
           step="1"
           value={settingsStore.value.movingAverageWindow ?? 7}
@@ -405,6 +535,49 @@
           <span>3 days</span>
           <span>21 days</span>
         </div>
+      </div>
+
+      <div>
+        <label class="block text-sm text-slate-400 mb-2">
+          Moving Average Type
+        </label>
+        <div class="flex gap-2">
+          <button
+            class="flex-1 py-2 rounded-lg transition-colors"
+            class:bg-blue-600={(settingsStore.value.movingAverageType ??
+              "ema") === "ema"}
+            class:bg-slate-700={(settingsStore.value.movingAverageType ??
+              "ema") !== "ema"}
+            onclick={() => settingsStore.update({ movingAverageType: "ema" })}
+          >
+            EMA
+          </button>
+          <button
+            class="flex-1 py-2 rounded-lg transition-colors"
+            class:bg-blue-600={(settingsStore.value.movingAverageType ??
+              "ema") === "sma"}
+            class:bg-slate-700={(settingsStore.value.movingAverageType ??
+              "ema") !== "sma"}
+            onclick={() => settingsStore.update({ movingAverageType: "sma" })}
+          >
+            SMA
+          </button>
+          <button
+            class="flex-1 py-2 rounded-lg transition-colors"
+            class:bg-blue-600={(settingsStore.value.movingAverageType ??
+              "ema") === "spline"}
+            class:bg-slate-700={(settingsStore.value.movingAverageType ??
+              "ema") !== "spline"}
+            onclick={() =>
+              settingsStore.update({ movingAverageType: "spline" })}
+          >
+            Spline
+          </button>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">
+          EMA reacts faster; SMA weights all days equally; Spline interpolates
+          through points.
+        </p>
       </div>
     </div>
   </div>

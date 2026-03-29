@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { WeightEntry } from "$lib/types";
+  import type { WeightEntry, SimulationResult } from "$lib/types";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
   import { Progress } from "$lib/components/ui/progress";
@@ -8,14 +8,51 @@
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ScaleIcon from "@lucide/svelte/icons/scale";
   import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
+  import ActivityIcon from "@lucide/svelte/icons/activity";
+
+  import PercentIcon from "@lucide/svelte/icons/percent";
 
   interface Props {
     entries: WeightEntry[];
     goalKg?: number;
-    goalDate?: string;
+    goalBodyFatPct?: number;
+    goalVisceralFat?: number;
+    /** Primary goal mode */
+    mode?: "weight" | "body_fat" | "visceral_fat";
+    /** Monte Carlo projection — used to find goal intersection date */
+    projection?: SimulationResult;
   }
 
-  let { entries, goalKg = 72, goalDate = "2026-06-01" }: Props = $props();
+  let {
+    entries,
+    goalKg = 73,
+    goalBodyFatPct = 15,
+    goalVisceralFat = 8,
+    mode = "visceral_fat",
+    projection,
+  }: Props = $props();
+
+  // ── Mode-dependent values ──
+  const goalValue = $derived(
+    mode === "visceral_fat"
+      ? goalVisceralFat
+      : mode === "body_fat"
+        ? goalBodyFatPct
+        : goalKg,
+  );
+  const goalLabel = $derived(
+    mode === "visceral_fat"
+      ? `Visceral Fat: ${goalVisceralFat}`
+      : mode === "body_fat"
+        ? `Body Fat: ${goalBodyFatPct}%`
+        : `Weight: ${goalKg}kg`,
+  );
+
+  function getValue(entry: WeightEntry): number | null {
+    if (mode === "visceral_fat") return entry.visceral_fat ?? null;
+    if (mode === "body_fat") return entry.body_fat_pct ?? null;
+    return entry.weight_kg;
+  }
 
   // Ticking clock for live countdown (survives screen-off via visibilitychange)
   let now = $state(new Date());
@@ -34,69 +71,82 @@
     };
   });
 
-  const latest = $derived(entries[0]);
-  const currentKg = $derived(latest?.weight_kg ?? 0);
-  const startKg = $derived(
-    entries.length > 0 ? entries[entries.length - 1].weight_kg : currentKg,
+  // Filter entries that have valid values for the selected mode
+  const validEntries = $derived(entries.filter((e) => getValue(e) != null));
+
+  const latest = $derived(validEntries[0]);
+  const currentVal = $derived(latest ? getValue(latest)! : 0);
+  const startVal = $derived(
+    validEntries.length > 0
+      ? getValue(validEntries[validEntries.length - 1])!
+      : currentVal,
   );
 
-  const remaining = $derived(Math.max(0, currentKg - goalKg));
-  const totalToLose = $derived(Math.max(1, startKg - goalKg));
-  const lost = $derived(Math.max(0, startKg - currentKg));
+  const remaining = $derived(Math.max(0, currentVal - goalValue));
+  const totalToLose = $derived(Math.max(0.01, startVal - goalValue));
+  const lost = $derived(Math.max(0, startVal - currentVal));
   const pctDone = $derived(Math.round((lost / totalToLose) * 100));
 
-  const daysLeft = $derived(
-    Math.max(
-      0,
-      Math.ceil(
-        (new Date(goalDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-      ),
-    ),
-  );
-
-  const weeksLeft = $derived(Math.max(1, daysLeft / 7));
-  const weeklyRateNeeded = $derived(remaining / weeksLeft);
-
-  const rateStatus = $derived<"green" | "yellow" | "red">(
-    weeklyRateNeeded <= 0.5
-      ? "green"
-      : weeklyRateNeeded <= 0.75
-        ? "yellow"
-        : "red",
-  );
-
-  const rateColors: Record<string, string> = {
-    green: "text-green-400 border-green-500/30",
-    yellow: "text-yellow-400 border-yellow-500/30",
-    red: "text-red-400 border-red-500/30",
-  };
-
-  // Actual rate from weight data (sorted oldest→newest)
+  // Actual rate from data (sorted oldest→newest)
   const actualRate = $derived.by(() => {
-    if (entries.length < 2) return null;
-    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    if (validEntries.length < 2) return null;
+    const sorted = [...validEntries].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
-    const totalChange = last.weight_kg - first.weight_kg;
+    const firstVal = getValue(first)!;
+    const lastVal = getValue(last)!;
+    const totalChange = lastVal - firstVal;
     const days = Math.max(
       1,
       (new Date(last.date).getTime() - new Date(first.date).getTime()) /
         (1000 * 60 * 60 * 24),
     );
-    const dailyKg = totalChange / days;
-    const dailyG = Math.round(dailyKg * 1000);
-    const weeklyKg = dailyKg * 7;
-    return { dailyG, weeklyKg, dailyKg };
+    const dailyRate = totalChange / days;
+    const weeklyRate = dailyRate * 7;
+    return { dailyRate, weeklyRate };
   });
 
-  // Fixed ETA target timestamp anchored to last weigh-in
+  // Find goal intersection from Monte Carlo projection points
+  function projectionFieldValue(point: Record<string, unknown>): number {
+    if (mode === "visceral_fat") return point.visceral_fat as number;
+    if (mode === "body_fat") return point.body_fat_pct as number;
+    return point.weight_kg as number;
+  }
+
+  const projectionGoalDate = $derived.by(() => {
+    if (!projection || projection.points.length < 2) return null;
+    const pts = projection.points;
+    for (let i = 1; i < pts.length; i++) {
+      const prev = projectionFieldValue(pts[i - 1] as any);
+      const curr = projectionFieldValue(pts[i] as any);
+      if (curr <= goalValue && prev > goalValue) {
+        // Linear interpolation between the two points
+        const frac = (prev - goalValue) / (prev - curr);
+        const prevMs = new Date(pts[i - 1].date + "T00:00:00").getTime();
+        const currMs = new Date(pts[i].date + "T00:00:00").getTime();
+        return new Date(prevMs + frac * (currMs - prevMs));
+      }
+    }
+    // Check if last point is already at/below goal
+    const lastVal = projectionFieldValue(pts[pts.length - 1] as any);
+    if (lastVal <= goalValue)
+      return new Date(pts[pts.length - 1].date + "T00:00:00");
+    return null;
+  });
+
+  // ETA: prefer projection intersection, fall back to linear extrapolation
   const etaTargetMs = $derived.by(() => {
-    if (!actualRate || actualRate.dailyKg >= 0 || remaining <= 0) return null;
-    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    if (projectionGoalDate) return projectionGoalDate.getTime();
+    if (!actualRate || actualRate.dailyRate >= 0 || remaining <= 0) return null;
+    const sorted = [...validEntries].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
     const last = sorted[sorted.length - 1];
     const lastMs = new Date(last.date + "T00:00:00").getTime();
-    const kgFromLast = last.weight_kg - goalKg;
-    const daysFromLast = kgFromLast / Math.abs(actualRate.dailyKg);
+    const valFromLast = getValue(last)! - goalValue;
+    const daysFromLast = valFromLast / Math.abs(actualRate.dailyRate);
     return lastMs + daysFromLast * 24 * 60 * 60 * 1000;
   });
 
@@ -114,28 +164,23 @@
 
   // Schedule + timeline data
   const schedule = $derived.by(() => {
-    if (!actualRate || entries.length < 2) return null;
-    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    if (!actualRate || validEntries.length < 2) return null;
+    const sorted = [...validEntries].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
     const startDate = new Date(sorted[0].date);
-    const goalD = new Date(goalDate);
 
-    let projectedDate: Date | null = null;
-    let daysAhead = 0;
-    if (actualRate.dailyKg < 0 && remaining > 0) {
-      const daysToGoal = remaining / Math.abs(actualRate.dailyKg);
+    // Prefer Monte Carlo projection intersection, fall back to linear
+    let projectedDate: Date | null = projectionGoalDate;
+    if (!projectedDate && actualRate.dailyRate < 0 && remaining > 0) {
+      const daysToGoal = remaining / Math.abs(actualRate.dailyRate);
       projectedDate = new Date(
         now.getTime() + daysToGoal * 24 * 60 * 60 * 1000,
       );
-      daysAhead = Math.round(
-        (goalD.getTime() - projectedDate.getTime()) / (1000 * 60 * 60 * 24),
-      );
     }
 
-    return { projectedDate, daysAhead, startDate, goalD, now };
+    return { projectedDate, startDate, now };
   });
-
-  const ahead = $derived(schedule ? schedule.daysAhead > 0 : false);
-  const behind = $derived(schedule ? schedule.daysAhead < 0 : false);
 
   // ── Timeline SVG layout ──
   const tlPad = { left: 8, right: 8 };
@@ -146,16 +191,13 @@
   const col = {
     today: "oklch(0.7 0.15 240)", // blue
     projected: "oklch(0.72 0.14 195)", // cyan/teal
-    goal: "oklch(0.78 0.14 80)", // amber/gold
-    behind: "oklch(0.65 0.2 25)", // red
   };
 
   const timeline = $derived.by(() => {
     if (!schedule) return null;
-    const { startDate, now, goalD, projectedDate } = schedule;
+    const { startDate, now, projectedDate } = schedule;
 
-    const endDate =
-      projectedDate && projectedDate > goalD ? projectedDate : goalD;
+    const endDate = projectedDate && projectedDate > now ? projectedDate : now;
     const spanMs = endDate.getTime() - startDate.getTime();
     const totalMs = spanMs * 1.06;
     const originMs = startDate.getTime();
@@ -172,34 +214,47 @@
     return {
       startX: dateToX(startDate),
       nowX: dateToX(now),
-      goalX: dateToX(goalD),
       projX: projectedDate ? dateToX(projectedDate) : null,
       startLabel: fmtShort(startDate),
-      goalLabel: fmtShort(goalD),
       projLabel: projectedDate ? fmtShort(projectedDate) : null,
-      daysAhead: schedule.daysAhead,
     };
   });
+
+  function fmtVal(v: number): string {
+    if (mode === "body_fat") return `${v.toFixed(1)}%`;
+    if (mode === "visceral_fat") return v.toFixed(1);
+    return `${v.toFixed(1)}kg`;
+  }
+
+  function fmtDailyRate(v: number): string {
+    if (mode === "weight") return Math.round(v * 1000) + "g";
+    if (mode === "body_fat") return v.toFixed(3) + "%/day";
+    return v.toFixed(3) + "/day";
+  }
 </script>
 
-{#if currentKg > 0}
+{#if currentVal > 0}
   <Card.Root>
     <Card.Header class="pb-3">
       <div class="flex items-center gap-3">
         <div
-          class="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10"
+          class="flex h-10 w-10 items-center justify-center rounded-lg {mode ===
+          'visceral_fat'
+            ? 'bg-purple-500/10'
+            : mode === 'body_fat'
+              ? 'bg-emerald-500/10'
+              : 'bg-amber-500/10'}"
         >
-          <TargetIcon class="h-5 w-5 text-amber-400" />
+          {#if mode === "visceral_fat"}
+            <ActivityIcon class="h-5 w-5 text-purple-400" />
+          {:else if mode === "body_fat"}
+            <PercentIcon class="h-5 w-5 text-emerald-400" />
+          {:else}
+            <TargetIcon class="h-5 w-5 text-amber-400" />
+          {/if}
         </div>
         <div class="flex-1">
-          <Card.Title>Goal: {goalKg}kg</Card.Title>
-          <Card.Description
-            >by {new Date(goalDate).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}</Card.Description
-          >
+          <Card.Title>{goalLabel}</Card.Title>
         </div>
         {#if pctDone > 0}
           <Badge variant="secondary" class="text-sky-400">{pctDone}% done</Badge
@@ -209,11 +264,11 @@
     </Card.Header>
 
     <Card.Content class="space-y-3">
-      <!-- Weight progress bar -->
+      <!-- Progress bar -->
       <div class="flex items-center justify-between text-sm">
-        <span class="font-mono tabular-nums">{currentKg.toFixed(1)} kg</span>
+        <span class="font-mono tabular-nums">{fmtVal(currentVal)}</span>
         <span class="text-muted-foreground font-mono tabular-nums"
-          >{goalKg} kg</span
+          >{fmtVal(goalValue)}</span
         >
       </div>
       <Progress value={pctDone} max={100} class="h-3" />
@@ -236,13 +291,12 @@
 
             <!-- Projected segment (today → projected) -->
             {#if timeline.projX}
-              {@const projAhead = timeline.daysAhead > 0}
               <line
                 x1={timeline.nowX}
                 y1={tlTrackY}
                 x2={timeline.projX}
                 y2={tlTrackY}
-                stroke={projAhead ? col.projected : col.behind}
+                stroke={col.projected}
                 stroke-width="1"
                 stroke-dasharray="3,2.5"
                 stroke-linecap="round"
@@ -277,7 +331,7 @@
               class="text-muted-foreground"
               font-size="6.5"
             >
-              {startKg.toFixed(1)}kg
+              {fmtVal(startVal)}
             </text>
 
             <!-- ── Today marker ── -->
@@ -323,13 +377,11 @@
               font-size="7"
               font-weight="500"
             >
-              {currentKg.toFixed(1)}kg
+              {fmtVal(currentVal)}
             </text>
 
             <!-- ── Projected marker ── -->
             {#if timeline.projX}
-              {@const projAhead = timeline.daysAhead > 0}
-              {@const projColor = projAhead ? col.projected : col.behind}
               <g transform="translate({timeline.projX}, {tlTrackY})">
                 <rect
                   x="-3.5"
@@ -337,7 +389,7 @@
                   width="7"
                   height="7"
                   rx="1"
-                  fill={projColor}
+                  fill={col.projected}
                   transform="rotate(45)"
                 />
               </g>
@@ -345,7 +397,7 @@
                 x={timeline.projX}
                 y={tlTrackY + 13}
                 text-anchor="middle"
-                fill={projColor}
+                fill={col.projected}
                 font-size="7"
                 font-weight="500"
               >
@@ -355,144 +407,13 @@
                 x={timeline.projX}
                 y={tlTrackY + 21}
                 text-anchor="middle"
-                fill={projColor}
+                fill={col.projected}
                 font-size="6"
                 opacity="0.7"
               >
                 projected
               </text>
-
-              <!-- Bracket showing days ahead/behind -->
-              {#if projAhead}
-                {@const midX = (timeline.projX + timeline.goalX) / 2}
-                <line
-                  x1={timeline.projX}
-                  y1={tlTrackY + 30}
-                  x2={timeline.goalX}
-                  y2={tlTrackY + 30}
-                  stroke={col.projected}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <line
-                  x1={timeline.projX}
-                  y1={tlTrackY + 27}
-                  x2={timeline.projX}
-                  y2={tlTrackY + 33}
-                  stroke={col.projected}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <line
-                  x1={timeline.goalX}
-                  y1={tlTrackY + 27}
-                  x2={timeline.goalX}
-                  y2={tlTrackY + 33}
-                  stroke={col.projected}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <text
-                  x={midX}
-                  y={tlTrackY + 40}
-                  text-anchor="middle"
-                  fill={col.projected}
-                  font-size="6.5"
-                  font-weight="500"
-                >
-                  {timeline.daysAhead}d early
-                </text>
-              {:else}
-                {@const midX = (timeline.goalX + timeline.projX) / 2}
-                <line
-                  x1={timeline.goalX}
-                  y1={tlTrackY + 30}
-                  x2={timeline.projX}
-                  y2={tlTrackY + 30}
-                  stroke={col.behind}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <line
-                  x1={timeline.goalX}
-                  y1={tlTrackY + 27}
-                  x2={timeline.goalX}
-                  y2={tlTrackY + 33}
-                  stroke={col.behind}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <line
-                  x1={timeline.projX}
-                  y1={tlTrackY + 27}
-                  x2={timeline.projX}
-                  y2={tlTrackY + 33}
-                  stroke={col.behind}
-                  stroke-width="0.6"
-                  opacity="0.35"
-                />
-                <text
-                  x={midX}
-                  y={tlTrackY + 40}
-                  text-anchor="middle"
-                  fill={col.behind}
-                  font-size="6.5"
-                  font-weight="500"
-                >
-                  {Math.abs(timeline.daysAhead)}d late
-                </text>
-              {/if}
             {/if}
-
-            <!-- ── Goal marker (flag) ── -->
-            <line
-              x1={timeline.goalX}
-              y1={tlTrackY - 14}
-              x2={timeline.goalX}
-              y2={tlTrackY + 2}
-              stroke={col.goal}
-              stroke-width="0.8"
-              opacity="0.5"
-            />
-            <rect
-              x={timeline.goalX}
-              y={tlTrackY - 14}
-              width="16"
-              height="8"
-              rx="1.5"
-              fill={col.goal}
-              opacity="0.15"
-              stroke={col.goal}
-              stroke-width="0.4"
-            />
-            <text
-              x={timeline.goalX + 8}
-              y={tlTrackY - 8}
-              text-anchor="middle"
-              fill={col.goal}
-              font-size="5.5"
-              font-weight="600"
-            >
-              GOAL
-            </text>
-            <circle
-              cx={timeline.goalX}
-              cy={tlTrackY}
-              r="3"
-              fill="none"
-              stroke={col.goal}
-              stroke-width="1"
-            />
-            <text
-              x={timeline.goalX + 18}
-              y={tlTrackY + 3}
-              text-anchor="start"
-              fill="currentColor"
-              class="text-muted-foreground"
-              font-size="6.5"
-            >
-              {timeline.goalLabel}
-            </text>
           </svg>
         </div>
       {/if}
@@ -528,50 +449,59 @@
         </div>
       {/if}
 
-      <!-- Stat cards row: remaining / needed rate -->
-      <div class="grid grid-cols-2 gap-2">
-        <div
-          class="rounded-lg border p-2 text-center text-orange-400 border-orange-500/30"
-        >
-          <TrendingDownIcon class="h-3.5 w-3.5 mx-auto mb-1" />
-          <p class="text-lg font-bold font-mono tabular-nums">
-            {remaining.toFixed(1)}
-          </p>
-          <p class="text-[10px] text-muted-foreground">kg left</p>
-        </div>
-        <div class="rounded-lg border p-2 text-center {rateColors[rateStatus]}">
-          <TrendingDownIcon class="h-3.5 w-3.5 mx-auto mb-1" />
-          <p class="text-lg font-bold font-mono tabular-nums">
-            {weeklyRateNeeded.toFixed(2)}
-          </p>
-          <p class="text-[10px] text-muted-foreground">kg/wk needed</p>
-        </div>
+      <!-- Stat card: remaining -->
+      <div
+        class="rounded-lg border p-2 text-center text-orange-400 border-orange-500/30"
+      >
+        <TrendingDownIcon class="h-3.5 w-3.5 mx-auto mb-1" />
+        <p class="text-lg font-bold font-mono tabular-nums">
+          {remaining.toFixed(1)}
+        </p>
+        <p class="text-[10px] text-muted-foreground">
+          {mode === "weight"
+            ? "kg left"
+            : mode === "body_fat"
+              ? "% to go"
+              : "to go"}
+        </p>
       </div>
 
       <!-- Stat cards row 2: actual daily / actual weekly -->
       {#if actualRate}
         <div class="grid grid-cols-2 gap-2">
           <div
-            class="rounded-lg border p-2 text-center {actualRate.dailyG <= 0
+            class="rounded-lg border p-2 text-center {actualRate.dailyRate <= 0
               ? 'text-cyan-400 border-cyan-500/30'
               : 'text-red-400 border-red-500/30'}"
           >
             <ArrowDownIcon class="h-3.5 w-3.5 mx-auto mb-1" />
             <p class="text-lg font-bold font-mono tabular-nums">
-              {actualRate.dailyG}g
+              {fmtDailyRate(actualRate.dailyRate)}
             </p>
             <p class="text-[10px] text-muted-foreground">avg/day actual</p>
           </div>
           <div
-            class="rounded-lg border p-2 text-center {actualRate.weeklyKg <= 0
+            class="rounded-lg border p-2 text-center {actualRate.weeklyRate <= 0
               ? 'text-violet-400 border-violet-500/30'
               : 'text-red-400 border-red-500/30'}"
           >
-            <ScaleIcon class="h-3.5 w-3.5 mx-auto mb-1" />
+            {#if mode === "visceral_fat"}
+              <ActivityIcon class="h-3.5 w-3.5 mx-auto mb-1" />
+            {:else if mode === "body_fat"}
+              <PercentIcon class="h-3.5 w-3.5 mx-auto mb-1" />
+            {:else}
+              <ScaleIcon class="h-3.5 w-3.5 mx-auto mb-1" />
+            {/if}
             <p class="text-lg font-bold font-mono tabular-nums">
-              {actualRate.weeklyKg.toFixed(2)}
+              {actualRate.weeklyRate.toFixed(2)}
             </p>
-            <p class="text-[10px] text-muted-foreground">kg/wk actual</p>
+            <p class="text-[10px] text-muted-foreground">
+              {mode === "weight"
+                ? "kg/wk actual"
+                : mode === "body_fat"
+                  ? "%/wk actual"
+                  : "/wk actual"}
+            </p>
           </div>
         </div>
       {/if}

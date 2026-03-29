@@ -8,6 +8,7 @@
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { initDb } from "$lib/db/index";
   import {
+    initSync,
     setupAutoSync,
     pull as syncPull,
     getSyncStatus,
@@ -33,7 +34,11 @@
   const navItems = [
     { href: `${base}/`, label: "Home", icon: HomeIcon },
     { href: `${base}/workout`, label: "Workout", icon: DumbbellIcon },
-    { href: `${base}/history`, label: "History", icon: ChartNoAxesCombinedIcon },
+    {
+      href: `${base}/history`,
+      label: "History",
+      icon: ChartNoAxesCombinedIcon,
+    },
     { href: `${base}/food`, label: "Food", icon: UtensilsIcon },
     { href: `${base}/biomarkers`, label: "Labs", icon: FlaskConicalIcon },
     { href: `${base}/settings`, label: "Settings", icon: SettingsIcon },
@@ -44,6 +49,7 @@
 
     if (authStore.isAuthenticated) {
       await initDb();
+      initSync();
 
       // Pull latest from GitHub if configured
       const syncStatus = getSyncStatus();

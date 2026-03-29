@@ -613,6 +613,19 @@ export function generateProjection(
     );
   }
 
+  // Extend horizon for visceral fat goal if needed
+  if (config.goalVisceralFat != null && dailyRate < 0 && vfCorr.slope !== 0) {
+    // VF = slope * weight + intercept → weight when VF = target
+    const weightAtVfGoal =
+      (config.goalVisceralFat - vfCorr.intercept) / vfCorr.slope;
+    if (weightAtVfGoal < latestWeight) {
+      const daysNeededForVf = Math.ceil(
+        (latestWeight - weightAtVfGoal) / Math.abs(dailyRate),
+      );
+      totalDays = Math.min(Math.max(totalDays, daysNeededForVf), 730);
+    }
+  }
+
   // Use GP projection for 'current' scenario, linear for others
   const useGP = scenario === "current" && entries.length >= 2;
   const gpResult = useGP

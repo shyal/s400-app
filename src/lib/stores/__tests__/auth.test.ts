@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
+global.fetch = mockFetch as unknown as typeof fetch;
+
+// Clear VITE_GITHUB_USERNAME so tests don't depend on .env
+vi.stubEnv("VITE_GITHUB_USERNAME", "");
 
 describe("authStore", () => {
   let authStore: typeof import("$lib/stores/auth.svelte").authStore;
 
   beforeEach(async () => {
     vi.resetModules();
-    vi.clearAllMocks();
+    mockFetch.mockReset();
+    global.fetch = mockFetch as unknown as typeof fetch;
     localStorage.clear();
     const mod = await import("$lib/stores/auth.svelte");
     authStore = mod.authStore;

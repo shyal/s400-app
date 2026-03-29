@@ -36,7 +36,12 @@ CREATE TABLE IF NOT EXISTS user_settings (
   increments TEXT DEFAULT '{"Squat":2.5,"Bench Press":2.5,"Barbell Row":2.5,"Overhead Press":2.5,"Deadlift":5}',
   workout_schedule TEXT,
   plateau_exercises TEXT DEFAULT '[]',
-  moving_average_window INTEGER DEFAULT 7
+  moving_average_window INTEGER DEFAULT 7,
+  moving_average_type TEXT DEFAULT 'ema',
+  goal_weight_kg REAL DEFAULT 73,
+  goal_body_fat_pct REAL DEFAULT 15,
+  goal_visceral_fat REAL DEFAULT 8,
+  goal_mode TEXT DEFAULT 'visceral_fat'
 );
 
 CREATE TABLE IF NOT EXISTS recipes (

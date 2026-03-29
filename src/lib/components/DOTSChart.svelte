@@ -2,8 +2,7 @@
   import type { Workout, WeightEntry } from "$lib/types";
   import { epleyE1RM } from "$lib/utils/progression";
   import * as Card from "$lib/components/ui/card";
-  import GaugeIcon from "@lucide/svelte/icons/gauge";
-
+  import TrophyIcon from "@lucide/svelte/icons/trophy";
   import {
     mulberry32,
     boxMullerTransform,
@@ -12,9 +11,7 @@
   interface Props {
     workouts: Workout[];
     entries: WeightEntry[];
-    /** Show Monte Carlo projection */
     showProjection?: boolean;
-    /** Projection horizon in days */
     projectionDays?: number;
   }
 
@@ -27,14 +24,36 @@
 
   const pad = { top: 12, right: 8, bottom: 18, left: 32 };
   const chartW = 800;
-  const chartH = 200;
+  const chartH = 220;
 
-  const liftNames = [
-    "Squat",
-    "Bench Press",
-    "Overhead Press",
-    "Barbell Row",
-    "Deadlift",
+  // ── DOTS coefficient (male) ──
+  // DOTS = total × 500 / (A·bw⁴ + B·bw³ + C·bw² + D·bw + E)
+  const DOTS_A = -0.000001093;
+  const DOTS_B = 0.0007391293;
+  const DOTS_C = -0.1918759221;
+  const DOTS_D = 24.0900756104;
+  const DOTS_E = -307.75076;
+
+  function dotsCoeff(bw: number): number {
+    const denom =
+      DOTS_A * bw ** 4 +
+      DOTS_B * bw ** 3 +
+      DOTS_C * bw ** 2 +
+      DOTS_D * bw +
+      DOTS_E;
+    return denom > 0 ? 500 / denom : 0;
+  }
+
+  function dotsScore(totalKg: number, bw: number): number {
+    return totalKg * dotsCoeff(bw);
+  }
+
+  // Tier thresholds & labels
+  const tiers = [
+    { score: 150, label: "Beginner", color: "#94a3b8" },
+    { score: 250, label: "Intermediate", color: "#22d3ee" },
+    { score: 350, label: "Advanced", color: "#a78bfa" },
+    { score: 450, label: "Elite", color: "#fbbf24" },
   ];
 
   // Sort weight entries for interpolation
@@ -63,7 +82,10 @@
     return (before ?? after)!.weight_kg;
   }
 
-  // Get ISO week string (YYYY-WW) for grouping
+  // SBD = Squat + Bench + Deadlift (the big 3)
+  const sbdLifts = ["Squat", "Bench Press", "Deadlift"];
+
+  // ISO week grouping
   function weekOf(dateStr: string): string {
     const d = new Date(dateStr + "T00:00:00");
     const jan1 = new Date(d.getFullYear(), 0, 1);
@@ -72,24 +94,28 @@
     return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
   }
 
-  // Compute weekly Relative Strength Index
-  // Walk workouts chronologically, track current e1RM per lift,
-  // emit one point per week: avg(current e1RMs) / bodyweight
+  // Compute weekly DOTS score
   const weeklyData = $derived.by(() => {
     const thisYear = new Date().getFullYear().toString();
     const sorted = [...workouts]
       .filter((w) => w.date.startsWith(thisYear))
       .sort((a, b) => a.date.localeCompare(b.date));
+
     const currentE1RM: Record<string, number> = {};
     const weekMap = new Map<
       string,
-      { date: string; rsi: number; bw: number; liftCount: number }
+      {
+        date: string;
+        dots: number;
+        total: number;
+        bw: number;
+        lifts: Record<string, number>;
+      }
     >();
 
     for (const w of sorted) {
-      // Update current e1RM for each lift trained
       for (const ex of w.exercises) {
-        if (!liftNames.includes(ex.name)) continue;
+        if (!sbdLifts.includes(ex.name)) continue;
         let best = 0;
         for (const set of ex.sets) {
           if (!set.completed) continue;
@@ -99,18 +125,24 @@
         if (best > 0) currentE1RM[ex.name] = best;
       }
 
-      const tracked = Object.values(currentE1RM);
+      // Need at least 2 of the big 3
+      const tracked = sbdLifts.filter((l) => currentE1RM[l] != null);
       if (tracked.length < 2) continue;
 
       const bw = getWeightAtDate(w.date);
       if (!bw) continue;
 
-      const avgE1RM = tracked.reduce((s, v) => s + v, 0) / tracked.length;
-      const rsi = avgE1RM / bw;
+      const total = tracked.reduce((s, l) => s + currentE1RM[l], 0);
+      const dots = dotsScore(total, bw);
       const week = weekOf(w.date);
 
-      // Keep last workout of each week
-      weekMap.set(week, { date: w.date, rsi, bw, liftCount: tracked.length });
+      weekMap.set(week, {
+        date: w.date,
+        dots,
+        total,
+        bw,
+        lifts: { ...currentE1RM },
+      });
     }
 
     return [...weekMap.values()];
@@ -118,15 +150,14 @@
 
   const hasData = $derived(weeklyData.length >= 2);
 
-  // ── Monte Carlo RSI Projection ──
-  const rsiProjection = $derived.by(() => {
+  // ── Monte Carlo DOTS Projection ──
+  const dotsProjection = $derived.by(() => {
     if (!showProjection || weeklyData.length < 3) return null;
 
-    // Linear regression on RSI vs days-since-first
     const t0 = new Date(weeklyData[0].date + "T00:00:00").getTime();
     const pts = weeklyData.map((p) => ({
       x: (new Date(p.date + "T00:00:00").getTime() - t0) / 86400000,
-      y: p.rsi,
+      y: p.dots,
     }));
     const n = pts.length;
     let sx = 0,
@@ -144,12 +175,10 @@
     const slope = (n * sxy - sx * sy) / denom;
     const intercept = (sy - slope * sx) / n;
 
-    // Residual std dev (volatility)
     let ssRes = 0;
     for (const p of pts) ssRes += (p.y - (intercept + slope * p.x)) ** 2;
     const residStd = Math.sqrt(ssRes / n);
 
-    // Day-to-day RSI volatility
     const diffs: number[] = [];
     for (let i = 1; i < pts.length; i++) {
       const dayGap = pts[i].x - pts[i - 1].x;
@@ -160,29 +189,25 @@
         ? Math.sqrt(diffs.reduce((s, d) => s + d * d, 0) / diffs.length)
         : residStd * 0.1;
 
-    // Generate sample paths
     const lastDay = pts[pts.length - 1].x;
-    const lastRSI = weeklyData[weeklyData.length - 1].rsi;
+    const lastDOTS = weeklyData[weeklyData.length - 1].dots;
     const rng = mulberry32(42);
     const numPaths = 30;
     const allPaths: number[][] = [];
 
     for (let p = 0; p < numPaths; p++) {
       const path: number[] = [];
-      let rsi = lastRSI;
-      for (let d = 1; d <= projectionDays; d++) {
-        const trendRSI = intercept + slope * (lastDay + d);
+      let d = lastDOTS;
+      for (let day = 1; day <= projectionDays; day++) {
+        const trendVal = intercept + slope * (lastDay + day);
         const noise = boxMullerTransform(rng) * vol;
-        // Blend: drift toward trend + random walk
-        rsi = rsi + slope + noise;
-        // Soft clamp toward trend to prevent wild divergence
-        rsi = rsi * 0.98 + trendRSI * 0.02;
-        path.push(Math.max(0, rsi));
+        d = d + slope + noise;
+        d = d * 0.98 + trendVal * 0.02;
+        path.push(Math.max(0, d));
       }
       allPaths.push(path);
     }
 
-    // Compute percentiles per day
     const today = new Date();
     const projPoints: {
       date: string;
@@ -201,39 +226,43 @@
       });
     }
 
-    return { projPoints, slope, lastRSI };
+    return { projPoints, slope };
   });
 
+  // ── Chart scales ──
   const xDomain = $derived.by(() => {
     if (weeklyData.length === 0) return { min: 0, max: 1 };
     const times = weeklyData.map((p) =>
       new Date(p.date + "T00:00:00").getTime(),
     );
     let maxT = Math.max(...times);
-    // Extend for projection
-    if (rsiProjection && rsiProjection.projPoints.length > 0) {
+    if (dotsProjection && dotsProjection.projPoints.length > 0) {
       const lastProjDate =
-        rsiProjection.projPoints[rsiProjection.projPoints.length - 1].date;
+        dotsProjection.projPoints[dotsProjection.projPoints.length - 1].date;
       maxT = Math.max(maxT, new Date(lastProjDate + "T00:00:00").getTime());
     }
     return { min: Math.min(...times), max: maxT };
   });
 
   const yDomain = $derived.by(() => {
-    if (weeklyData.length === 0) return { min: 0, max: 1 };
-    const vals = weeklyData.map((p) => p.rsi);
-    // Include projection bounds
-    if (rsiProjection) {
-      for (const p of rsiProjection.projPoints) {
+    if (weeklyData.length === 0) return { min: 0, max: 300 };
+    const vals = weeklyData.map((p) => p.dots);
+    if (dotsProjection) {
+      for (const p of dotsProjection.projPoints) {
         vals.push(p.upper, p.lower);
       }
     }
+    // Include tier lines that are near the data range
+    const dataMax = Math.max(...vals);
+    for (const t of tiers) {
+      if (t.score <= dataMax * 1.5) vals.push(t.score);
+    }
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
-    const margin = Math.max((hi - lo) * 0.15, 0.05);
+    const margin = Math.max((hi - lo) * 0.15, 20);
     return {
-      min: Math.max(0, Math.floor((lo - margin) * 20) / 20),
-      max: Math.ceil((hi + margin) * 20) / 20,
+      min: Math.max(0, Math.floor((lo - margin) / 25) * 25),
+      max: Math.ceil((hi + margin) / 25) * 25,
     };
   });
 
@@ -255,12 +284,11 @@
 
   const yTicks = $derived.by(() => {
     const range = yDomain.max - yDomain.min;
-    const step =
-      range <= 0.3 ? 0.05 : range <= 0.6 ? 0.1 : range <= 1.2 ? 0.2 : 0.5;
+    const step = range <= 100 ? 25 : range <= 200 ? 50 : 100;
     const ticks: number[] = [];
     const start = Math.ceil(yDomain.min / step) * step;
-    for (let v = start; v <= yDomain.max + 0.001; v += step) {
-      ticks.push(Math.round(v * 100) / 100);
+    for (let v = start; v <= yDomain.max + 0.1; v += step) {
+      ticks.push(Math.round(v));
     }
     return ticks;
   });
@@ -286,12 +314,11 @@
     return labels;
   });
 
-  // Smooth line path (no polyline — use SVG path for clean curves)
   const linePath = $derived.by(() => {
     if (weeklyData.length < 2) return "";
     return weeklyData
       .map(
-        (p, i) => `${i === 0 ? "M" : "L"} ${dateToX(p.date)},${scaleY(p.rsi)}`,
+        (p, i) => `${i === 0 ? "M" : "L"} ${dateToX(p.date)},${scaleY(p.dots)}`,
       )
       .join(" ");
   });
@@ -300,7 +327,7 @@
     if (weeklyData.length < 2) return "";
     const baseY = scaleY(yDomain.min);
     let d = `M ${dateToX(weeklyData[0].date)},${baseY}`;
-    for (const p of weeklyData) d += ` L ${dateToX(p.date)},${scaleY(p.rsi)}`;
+    for (const p of weeklyData) d += ` L ${dateToX(p.date)},${scaleY(p.dots)}`;
     d += ` L ${dateToX(weeklyData[weeklyData.length - 1].date)},${baseY} Z`;
     return d;
   });
@@ -309,9 +336,24 @@
     weeklyData.length > 0 ? weeklyData[weeklyData.length - 1] : null,
   );
   const first = $derived(weeklyData.length > 0 ? weeklyData[0] : null);
-  const change = $derived(latest && first ? latest.rsi - first.rsi : 0);
+  const change = $derived(latest && first ? latest.dots - first.dots : 0);
   const changePct = $derived(
-    latest && first && first.rsi > 0 ? (change / first.rsi) * 100 : 0,
+    latest && first && first.dots > 0 ? (change / first.dots) * 100 : 0,
+  );
+
+  // Current tier
+  const currentTier = $derived.by(() => {
+    if (!latest) return null;
+    let tier = "Untrained";
+    for (const t of tiers) {
+      if (latest.dots >= t.score) tier = t.label;
+    }
+    return tier;
+  });
+
+  // Visible tier lines (within y-domain)
+  const visibleTiers = $derived(
+    tiers.filter((t) => t.score >= yDomain.min && t.score <= yDomain.max),
   );
 </script>
 
@@ -319,14 +361,21 @@
   <Card.Header class="pb-2 pt-3 px-4">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <GaugeIcon class="h-4 w-4 text-muted-foreground" />
-        <Card.Title class="text-sm font-semibold">Relative Strength</Card.Title>
+        <TrophyIcon class="h-4 w-4 text-muted-foreground" />
+        <Card.Title class="text-sm font-semibold">DOTS Score</Card.Title>
       </div>
       {#if latest}
         <div class="flex items-center gap-2">
-          <span class="text-lg font-bold font-mono tabular-nums text-cyan-400">
-            {latest.rsi.toFixed(2)}x BW
+          <span class="text-lg font-bold font-mono tabular-nums text-amber-400">
+            {Math.round(latest.dots)}
           </span>
+          {#if currentTier}
+            <span
+              class="text-[10px] font-medium text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
+            >
+              {currentTier}
+            </span>
+          {/if}
           {#if change > 0}
             <span class="text-xs font-medium text-emerald-400"
               >+{changePct.toFixed(0)}%</span
@@ -340,7 +389,14 @@
       {/if}
     </div>
     <p class="text-[10px] text-muted-foreground mt-0.5">
-      Avg e1RM across {latest?.liftCount ?? 0} lifts / bodyweight &middot; Weekly
+      {#if latest}
+        SBD Total: {Math.round(latest.total)}kg at {latest.bw.toFixed(1)}kg BW
+        &middot; S:{Math.round(latest.lifts["Squat"] ?? 0)}
+        B:{Math.round(latest.lifts["Bench Press"] ?? 0)}
+        D:{Math.round(latest.lifts["Deadlift"] ?? 0)}
+      {:else}
+        Squat + Bench + Deadlift e1RM, normalized for bodyweight
+      {/if}
     </p>
   </Card.Header>
 
@@ -348,9 +404,9 @@
     {#if hasData}
       <svg viewBox="0 0 {chartW} {chartH}" class="w-full block">
         <defs>
-          <linearGradient id="rsi-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.25" />
-            <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.02" />
+          <linearGradient id="dots-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.2" />
+            <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -371,7 +427,7 @@
             text-anchor="end"
             fill="currentColor"
             class="text-muted-foreground"
-            font-size="5">{tick.toFixed(2)}</text
+            font-size="5">{tick}</text
           >
         {/each}
 
@@ -386,12 +442,37 @@
           >
         {/each}
 
-        <!-- Area -->
-        <path d={areaPath} fill="url(#rsi-grad)" />
+        <!-- Tier lines -->
+        {#each visibleTiers as tier (tier.score)}
+          <line
+            x1={pad.left}
+            y1={scaleY(tier.score)}
+            x2={chartW - pad.right}
+            y2={scaleY(tier.score)}
+            stroke={tier.color}
+            stroke-width="0.7"
+            stroke-dasharray="6,4"
+            opacity="0.35"
+          />
+          <text
+            x={chartW - pad.right - 2}
+            y={scaleY(tier.score) - 3}
+            text-anchor="end"
+            fill={tier.color}
+            font-size="5"
+            font-weight="500"
+            opacity="0.6"
+          >
+            {tier.label}
+          </text>
+        {/each}
 
-        <!-- Projection confidence band + median -->
-        {#if rsiProjection && rsiProjection.projPoints.length > 0}
-          {@const pts = rsiProjection.projPoints}
+        <!-- Area -->
+        <path d={areaPath} fill="url(#dots-grad)" />
+
+        <!-- Projection -->
+        {#if dotsProjection && dotsProjection.projPoints.length > 0}
+          {@const pts = dotsProjection.projPoints}
           {@const bandPath = (() => {
             let d = `M ${dateToX(pts[0].date)},${scaleY(pts[0].upper)}`;
             for (const p of pts)
@@ -407,21 +488,21 @@
                 `${i === 0 ? "M" : "L"} ${dateToX(p.date)},${scaleY(p.median)}`,
             )
             .join(" ")}
-          <path d={bandPath} fill="#22d3ee" opacity="0.08" />
+          <path d={bandPath} fill="#fbbf24" opacity="0.06" />
           <path
             d={medianPath}
-            stroke="#22d3ee"
+            stroke="#fbbf24"
             stroke-width="1.5"
             fill="none"
             stroke-dasharray="4,3"
-            opacity="0.6"
+            opacity="0.5"
           />
         {/if}
 
         <!-- Line -->
         <path
           d={linePath}
-          stroke="#22d3ee"
+          stroke="#fbbf24"
           stroke-width="2.5"
           fill="none"
           stroke-linejoin="round"
@@ -433,9 +514,9 @@
           {@const lastPt = weeklyData[weeklyData.length - 1]}
           <circle
             cx={dateToX(lastPt.date)}
-            cy={scaleY(lastPt.rsi)}
+            cy={scaleY(lastPt.dots)}
             r="3.5"
-            fill="#22d3ee"
+            fill="#fbbf24"
             stroke="var(--card)"
             stroke-width="1.5"
           />
@@ -443,7 +524,7 @@
       </svg>
     {:else}
       <div class="text-sm text-muted-foreground text-center py-6 px-4">
-        Need more workout data
+        Need at least 2 of Squat, Bench, Deadlift tracked
       </div>
     {/if}
   </Card.Content>

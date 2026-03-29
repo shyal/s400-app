@@ -125,12 +125,35 @@ export async function fetchSettings(): Promise<Partial<Settings> | null> {
     ...(data.moving_average_window != null
       ? { movingAverageWindow: data.moving_average_window as number }
       : {}),
+    ...(data.moving_average_type
+      ? {
+          movingAverageType: data.moving_average_type as
+            | "sma"
+            | "ema"
+            | "spline",
+        }
+      : {}),
+    ...(data.goal_weight_kg != null
+      ? { goalWeightKg: data.goal_weight_kg as number }
+      : {}),
+    ...(data.goal_body_fat_pct != null
+      ? { goalBodyFatPct: data.goal_body_fat_pct as number }
+      : {}),
+    ...(data.goal_visceral_fat != null
+      ? { goalVisceralFat: data.goal_visceral_fat as number }
+      : {}),
+    ...(data.goal_mode
+      ? {
+          goalMode: data.goal_mode as "weight" | "body_fat" | "visceral_fat",
+        }
+      : {}),
   };
 }
 
 export async function upsertSettings(s: Settings): Promise<boolean> {
   if (!supabase) return false;
   const { error } = await supabase.from("user_settings").upsert({
+    id: 1,
     rest_timer_seconds: s.restTimerSeconds,
     weight_unit: s.weightUnit,
     program: s.program,
@@ -140,6 +163,11 @@ export async function upsertSettings(s: Settings): Promise<boolean> {
     workout_schedule: s.workoutSchedule,
     plateau_exercises: s.plateauExercises ?? [],
     moving_average_window: s.movingAverageWindow ?? 7,
+    moving_average_type: s.movingAverageType ?? "ema",
+    goal_weight_kg: s.goalWeightKg ?? 73,
+    goal_body_fat_pct: s.goalBodyFatPct ?? 15,
+    goal_visceral_fat: s.goalVisceralFat ?? 8,
+    goal_mode: s.goalMode ?? "visceral_fat",
   });
   if (error) {
     console.error("upsertSettings:", error);

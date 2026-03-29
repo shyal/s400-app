@@ -69,6 +69,12 @@ export interface Settings {
   waterReminderIntervalMin?: number;
   plateauExercises?: string[];
   movingAverageWindow?: number;
+  movingAverageType?: "sma" | "ema" | "spline";
+  goalWeightKg?: number;
+  goalBodyFatPct?: number;
+  goalVisceralFat?: number;
+  /** Which metric the GoalCountdown tracks */
+  goalMode?: "weight" | "body_fat" | "visceral_fat";
 }
 
 export interface ProgramExercise {
@@ -362,6 +368,8 @@ export interface SimulationResult {
 export interface SimulationConfig {
   goalKg: number;
   goalDate: string;
+  /** Target visceral fat level — projection extends until this is reached */
+  goalVisceralFat?: number;
   customWeeklyRate?: number;
   /** When true, clamp muscle mass projection to flat/positive (strength still progressing) */
   strengthProgressing?: boolean;

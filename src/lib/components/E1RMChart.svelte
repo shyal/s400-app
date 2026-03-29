@@ -1,14 +1,24 @@
 <script lang="ts">
   import type { Workout } from "$lib/types";
   import { epleyE1RM } from "$lib/utils/progression";
+  import {
+    mulberry32,
+    boxMullerTransform,
+  } from "$lib/services/simulationEngine";
   import * as Card from "$lib/components/ui/card";
   import TrophyIcon from "@lucide/svelte/icons/trophy";
 
   interface Props {
     workouts: Workout[];
+    showProjection?: boolean;
+    projectionDays?: number;
   }
 
-  let { workouts }: Props = $props();
+  let {
+    workouts,
+    showProjection = false,
+    projectionDays = 90,
+  }: Props = $props();
 
   const pad = { top: 10, right: 4, bottom: 18, left: 28 };
   const chartW = 800;
@@ -118,12 +128,31 @@
     const times = allPoints.map((p) =>
       new Date(p.date + "T00:00:00").getTime(),
     );
-    return { min: Math.min(...times), max: Math.max(...times) };
+    let maxT = Math.max(...times);
+    if (hasProjections) {
+      for (const name of Object.keys(liftProjections)) {
+        const pp = liftProjections[name].projPoints;
+        if (pp.length > 0) {
+          const lastT = new Date(
+            pp[pp.length - 1].date + "T00:00:00",
+          ).getTime();
+          if (lastT > maxT) maxT = lastT;
+        }
+      }
+    }
+    return { min: Math.min(...times), max: maxT };
   });
 
   const yDomain = $derived.by(() => {
     if (allPoints.length === 0) return { min: 0, max: 100 };
     const vals = allPoints.map((p) => p.e1rm);
+    if (hasProjections) {
+      for (const name of Object.keys(liftProjections)) {
+        for (const p of liftProjections[name].projPoints) {
+          vals.push(p.upper, p.lower);
+        }
+      }
+    }
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
     const margin = Math.max((hi - lo) * 0.08, 2);
@@ -187,6 +216,103 @@
     }
     return result;
   });
+
+  // ── Monte Carlo e1RM Projections ──
+  type ProjPoint = {
+    date: string;
+    median: number;
+    upper: number;
+    lower: number;
+  };
+  type LiftProjection = { projPoints: ProjPoint[] };
+
+  const liftProjections = $derived.by(() => {
+    if (!showProjection) return {} as Record<string, LiftProjection>;
+    const result: Record<string, LiftProjection> = {};
+
+    for (const name of activLifts) {
+      const pts = liftData[name];
+      if (pts.length < 3) continue;
+
+      const t0 = new Date(pts[0].date + "T00:00:00").getTime();
+      const mapped = pts.map((p) => ({
+        x: (new Date(p.date + "T00:00:00").getTime() - t0) / 86400000,
+        y: p.e1rm,
+      }));
+
+      const n = mapped.length;
+      let sx = 0,
+        sy = 0,
+        sxx = 0,
+        sxy = 0;
+      for (const p of mapped) {
+        sx += p.x;
+        sy += p.y;
+        sxx += p.x * p.x;
+        sxy += p.x * p.y;
+      }
+      const denom = n * sxx - sx * sx;
+      if (Math.abs(denom) < 1e-12) continue;
+      const slope = (n * sxy - sx * sy) / denom;
+      const intercept = (sy - slope * sx) / n;
+
+      let ssRes = 0;
+      for (const p of mapped) ssRes += (p.y - (intercept + slope * p.x)) ** 2;
+      const residStd = Math.sqrt(ssRes / n);
+
+      const diffs: number[] = [];
+      for (let i = 1; i < mapped.length; i++) {
+        const gap = mapped[i].x - mapped[i - 1].x;
+        if (gap > 0)
+          diffs.push((mapped[i].y - mapped[i - 1].y) / Math.sqrt(gap));
+      }
+      const vol =
+        diffs.length > 0
+          ? Math.sqrt(diffs.reduce((s, d) => s + d * d, 0) / diffs.length)
+          : residStd * 0.1;
+
+      const lastDay = mapped[mapped.length - 1].x;
+      const lastVal = pts[pts.length - 1].e1rm;
+      // Use a different seed per exercise for variety
+      const seed = name.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+      const rng = mulberry32(seed);
+      const numPaths = 30;
+      const allPaths: number[][] = [];
+
+      for (let p = 0; p < numPaths; p++) {
+        const path: number[] = [];
+        let v = lastVal;
+        for (let day = 1; day <= projectionDays; day++) {
+          const trendVal = intercept + slope * (lastDay + day);
+          const noise = boxMullerTransform(rng) * vol;
+          v = v + slope + noise;
+          v = v * 0.98 + trendVal * 0.02;
+          path.push(Math.max(0, v));
+        }
+        allPaths.push(path);
+      }
+
+      const today = new Date();
+      const projPoints: ProjPoint[] = [];
+      for (let d = 0; d < projectionDays; d++) {
+        const vals = allPaths.map((p) => p[d]).sort((a, b) => a - b);
+        const pDate = new Date(today.getTime() + (d + 1) * 86400000);
+        projPoints.push({
+          date: pDate.toISOString().split("T")[0],
+          median: vals[Math.floor(vals.length * 0.5)],
+          upper: vals[Math.floor(vals.length * 0.95)],
+          lower: vals[Math.floor(vals.length * 0.05)],
+        });
+      }
+
+      result[name] = { projPoints };
+    }
+    return result;
+  });
+
+  const hasProjections = $derived(
+    showProjection && Object.keys(liftProjections).length > 0,
+  );
 </script>
 
 <Card.Root class="overflow-hidden">
@@ -234,6 +360,35 @@
         {/each}
 
         {#each activLifts as name (name)}
+          <!-- Projection band + median -->
+          {#if liftProjections[name]}
+            {@const pp = liftProjections[name].projPoints}
+            {@const bandD = (() => {
+              let d = `M ${dateToX(pp[0].date)},${scaleY(pp[0].upper)}`;
+              for (const p of pp)
+                d += ` L ${dateToX(p.date)},${scaleY(p.upper)}`;
+              for (let i = pp.length - 1; i >= 0; i--)
+                d += ` L ${dateToX(pp[i].date)},${scaleY(pp[i].lower)}`;
+              d += " Z";
+              return d;
+            })()}
+            {@const medD = pp
+              .map(
+                (p, i) =>
+                  `${i === 0 ? "M" : "L"} ${dateToX(p.date)},${scaleY(p.median)}`,
+              )
+              .join(" ")}
+            <path d={bandD} fill={liftColors[name]} opacity="0.06" />
+            <path
+              d={medD}
+              stroke={liftColors[name]}
+              stroke-width="1"
+              fill="none"
+              stroke-dasharray="4,3"
+              opacity="0.4"
+            />
+          {/if}
+
           <!-- Connecting line -->
           {@const linePts = liftData[name]
             .map((pt) => `${dateToX(pt.date)},${scaleY(pt.e1rm)}`)

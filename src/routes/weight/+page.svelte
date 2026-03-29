@@ -59,6 +59,7 @@
     {entries}
     {goalKg}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
+    movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
   />
 
   {#if recent.length > 0}

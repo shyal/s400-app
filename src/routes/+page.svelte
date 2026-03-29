@@ -14,6 +14,7 @@
   import BodyMetricChart from "$lib/components/BodyMetricChart.svelte";
   import E1RMChart from "$lib/components/E1RMChart.svelte";
   import StrengthWeightChart from "$lib/components/StrengthWeightChart.svelte";
+  import DOTSChart from "$lib/components/DOTSChart.svelte";
   import TodoList from "$lib/components/TodoList.svelte";
   import GoalCountdown from "$lib/components/GoalCountdown.svelte";
   import WorkoutCountdown from "$lib/components/WorkoutCountdown.svelte";
@@ -76,9 +77,15 @@
     localStorage.setItem("showSimulation", showSimulation ? "1" : "0");
   });
 
+  const goalWeightKg = $derived(settingsStore.value.goalWeightKg ?? 73);
+  const goalBodyFatPct = $derived(settingsStore.value.goalBodyFatPct ?? 15);
+  const goalVisceralFat = $derived(settingsStore.value.goalVisceralFat ?? 8);
+  const goalMode = $derived(settingsStore.value.goalMode ?? "visceral_fat");
+
   const simConfig = $derived<SimulationConfig>({
-    goalKg: 72,
+    goalKg: goalWeightKg,
     goalDate: "2026-06-01",
+    goalVisceralFat: goalVisceralFat,
     strengthProgressing: isStrengthProgressing(workoutStore.history.workouts),
   });
   const currentProjection = $derived(
@@ -153,7 +160,45 @@
   </header>
 
   <!-- ═══ Goal Progress ═══ -->
-  <GoalCountdown entries={nutritionStore.weightLog} />
+  <div class="space-y-2">
+    <div class="flex gap-1.5 justify-center">
+      <button
+        class="px-3 py-1 rounded-full text-xs font-medium transition-colors {goalMode ===
+        'weight'
+          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+          : 'text-muted-foreground hover:bg-muted/50'}"
+        onclick={() => settingsStore.update({ goalMode: "weight" })}
+      >
+        Weight
+      </button>
+      <button
+        class="px-3 py-1 rounded-full text-xs font-medium transition-colors {goalMode ===
+        'body_fat'
+          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+          : 'text-muted-foreground hover:bg-muted/50'}"
+        onclick={() => settingsStore.update({ goalMode: "body_fat" })}
+      >
+        Body Fat
+      </button>
+      <button
+        class="px-3 py-1 rounded-full text-xs font-medium transition-colors {goalMode ===
+        'visceral_fat'
+          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+          : 'text-muted-foreground hover:bg-muted/50'}"
+        onclick={() => settingsStore.update({ goalMode: "visceral_fat" })}
+      >
+        Visceral Fat
+      </button>
+    </div>
+    <GoalCountdown
+      entries={nutritionStore.weightLog}
+      mode={goalMode}
+      goalKg={goalWeightKg}
+      {goalBodyFatPct}
+      {goalVisceralFat}
+      projection={currentProjection}
+    />
+  </div>
 
   <!-- ═══ Simulation Toggle ═══ -->
   <button
@@ -328,6 +373,7 @@
     workouts={workoutStore.history.workouts}
     projection={currentProjection}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
+    movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
   />
 
   <!-- ═══ Body Composition ═══ -->
@@ -342,6 +388,7 @@
     errorMargin={1.5}
     projection={currentProjection}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
+    movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
   />
   <BodyMetricChart
     entries={nutritionStore.weightLog}
@@ -354,6 +401,8 @@
     errorMargin={1.5}
     projection={currentProjection}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
+    movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
+    goalValue={goalBodyFatPct}
   />
   <BodyMetricChart
     entries={nutritionStore.weightLog}
@@ -366,15 +415,28 @@
     errorMargin={1.5}
     projection={currentProjection}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
+    movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
+    goalValue={goalVisceralFat}
   />
 
   <!-- ═══ Estimated 1RM ═══ -->
-  <E1RMChart workouts={workoutStore.history.workouts} />
+  <E1RMChart
+    workouts={workoutStore.history.workouts}
+    showProjection={showSimulation}
+  />
 
   <!-- ═══ Strength / Weight Ratio ═══ -->
   <StrengthWeightChart
     workouts={workoutStore.history.workouts}
     entries={nutritionStore.weightLog}
+    showProjection={showSimulation}
+  />
+
+  <!-- ═══ DOTS Score ═══ -->
+  <DOTSChart
+    workouts={workoutStore.history.workouts}
+    entries={nutritionStore.weightLog}
+    showProjection={showSimulation}
   />
 
   <!-- ═══ Tasks ═══ -->

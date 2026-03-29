@@ -1,56 +1,98 @@
-import initSqlJs, { type Database } from "sql.js";
+import {
+  initDb as supahubInit,
+  getDb,
+  run as supahubRun,
+  queryAll,
+  queryOne,
+  save,
+  exportBytes,
+  importBytes,
+  isInitialized,
+  configureColumns,
+  schedulePush,
+  markDirty,
+  pull,
+  getSyncStatus,
+} from "supahub";
 import { base } from "$app/paths";
-import { runSchema } from "./schema";
-import { readDatabase, writeDatabase } from "./opfs";
+import { SCHEMA_SQL } from "./schema";
 
-let db: Database | null = null;
-let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
-
-function getSql() {
-  if (!sqlPromise) {
-    sqlPromise = initSqlJs({
-      locateFile: (file: string) => `${base}/${file}`,
-    });
-  }
-  return sqlPromise;
-}
-
-export async function initDb(): Promise<void> {
-  if (db) return;
-
-  const SQL = await getSql();
-  const existing = await readDatabase();
-
-  if (existing) {
-    db = new SQL.Database(existing);
-  } else {
-    db = new SQL.Database();
-  }
-
-  runSchema(db);
-
-  // Seed from exported Supabase data on first run
-  if (!existing) {
-    await loadSeed();
-  }
-
-  await save();
-}
-
-// JSON column names that need JSON.stringify when inserting
-const JSON_COLS = new Set([
+const JSON_COLS = [
   "exercises",
   "increments",
   "workout_schedule",
   "plateau_exercises",
   "stacks",
-]);
+];
 
-const BOOL_COLS = new Set([
-  "sound_enabled",
-  "vibration_enabled",
-  "is_favorite",
-]);
+const BOOL_COLS = ["sound_enabled", "vibration_enabled", "is_favorite"];
+
+/**
+ * Wrapped `run()` that marks the DB as dirty when executing write statements.
+ * This ensures we only push to GitHub when actual user changes occurred,
+ * preventing stale browser data from overwriting remote changes (e.g. from
+ * Python scripts).
+ */
+function run(sql: string, params?: unknown[]): void {
+  supahubRun(sql, params);
+  // Mark dirty for write operations (INSERT, UPDATE, DELETE, REPLACE, ALTER, DROP)
+  const trimmed = sql.trimStart().toUpperCase();
+  if (
+    trimmed.startsWith("INSERT") ||
+    trimmed.startsWith("UPDATE") ||
+    trimmed.startsWith("DELETE") ||
+    trimmed.startsWith("REPLACE") ||
+    trimmed.startsWith("ALTER") ||
+    trimmed.startsWith("DROP")
+  ) {
+    markDirty();
+  }
+}
+
+export async function initDb(): Promise<void> {
+  if (isInitialized()) return;
+
+  configureColumns({ json: JSON_COLS, bool: BOOL_COLS });
+
+  await supahubInit({
+    wasmUrl: `${base}/sql-wasm.wasm`,
+    filename: "stronglifts.sqlite",
+    schema: SCHEMA_SQL,
+    onSave: () => {
+      try {
+        schedulePush();
+      } catch {
+        // sync not configured yet
+      }
+    },
+  });
+
+  // Run migrations for columns added after initial schema
+  applyMigrations();
+
+  // Pull latest from GitHub on startup to incorporate changes from other
+  // clients (e.g. Python scripts that backfill data). This runs BEFORE any
+  // user interaction, so there's no local data to lose.
+  try {
+    if (getSyncStatus().configured) {
+      const result = await pull();
+      if (result.updated) {
+        console.log("[stronglifts] Pulled latest data from GitHub on startup");
+      }
+    }
+  } catch {
+    // Network error or sync not configured — continue with local data
+  }
+
+  // Seed from exported Supabase data on first run
+  const count = queryOne<{ cnt: number }>(
+    "SELECT COUNT(*) as cnt FROM workouts",
+  );
+  if (count && count.cnt === 0) {
+    await loadSeed();
+    await save();
+  }
+}
 
 async function loadSeed(): Promise<void> {
   try {
@@ -79,6 +121,9 @@ async function loadSeed(): Promise<void> {
       "strava_activities",
     ];
 
+    const jsonSet = new Set(JSON_COLS);
+    const boolSet = new Set(BOOL_COLS);
+
     for (const table of tables) {
       const rows = seed[table];
       if (!rows || rows.length === 0) continue;
@@ -87,14 +132,14 @@ async function loadSeed(): Promise<void> {
         const keys = Object.keys(row);
         const vals = keys.map((k) => {
           const v = row[k];
-          if (JSON_COLS.has(k) && typeof v === "object" && v !== null)
+          if (jsonSet.has(k) && typeof v === "object" && v !== null)
             return JSON.stringify(v);
-          if (BOOL_COLS.has(k)) return v ? 1 : 0;
+          if (boolSet.has(k)) return v ? 1 : 0;
           return v;
         });
         const placeholders = keys.map(() => "?").join(", ");
         const sql = `INSERT OR IGNORE INTO "${table}" (${keys.map((k) => `"${k}"`).join(", ")}) VALUES (${placeholders})`;
-        getDb().run(sql, vals as never);
+        run(sql, vals);
       }
     }
 
@@ -104,64 +149,65 @@ async function loadSeed(): Promise<void> {
   }
 }
 
-export function getDb(): Database {
-  if (!db) throw new Error("Database not initialized. Call initDb() first.");
-  return db;
-}
+/**
+ * Apply ALTER TABLE migrations for columns added after the initial schema.
+ * Each migration is idempotent — it checks if the column exists first.
+ */
+function applyMigrations(): void {
+  const migrations: { table: string; column: string; definition: string }[] = [
+    {
+      table: "user_settings",
+      column: "moving_average_type",
+      definition: "TEXT DEFAULT 'ema'",
+    },
+    {
+      table: "user_settings",
+      column: "goal_weight_kg",
+      definition: "REAL DEFAULT 73",
+    },
+    {
+      table: "user_settings",
+      column: "goal_body_fat_pct",
+      definition: "REAL DEFAULT 15",
+    },
+    {
+      table: "user_settings",
+      column: "goal_visceral_fat",
+      definition: "REAL DEFAULT 8",
+    },
+    {
+      table: "user_settings",
+      column: "goal_mode",
+      definition: "TEXT DEFAULT 'visceral_fat'",
+    },
+  ];
 
-export function run(sql: string, params?: unknown[]): void {
-  getDb().run(sql, params as never);
-}
-
-export function queryAll<T = Record<string, unknown>>(
-  sql: string,
-  params?: unknown[],
-): T[] {
-  const stmt = getDb().prepare(sql);
-  if (params) stmt.bind(params as never);
-
-  const results: T[] = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject() as T);
+  for (const { table, column, definition } of migrations) {
+    try {
+      // PRAGMA table_info returns rows for each column; check if ours exists
+      const cols = queryAll<{ name: string }>(`PRAGMA table_info("${table}")`);
+      if (cols && !cols.some((c) => c.name === column)) {
+        supahubRun(
+          `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`,
+        );
+        console.log(`[migration] Added ${table}.${column}`);
+      }
+    } catch (e) {
+      console.warn(`[migration] Failed to add ${table}.${column}:`, e);
+    }
   }
-  stmt.free();
-  return results;
 }
 
-export function queryOne<T = Record<string, unknown>>(
-  sql: string,
-  params?: unknown[],
-): T | null {
-  const results = queryAll<T>(sql, params);
-  return results[0] ?? null;
-}
-
-export async function save(): Promise<void> {
-  if (!db) return;
-  const data = db.export();
-  await writeDatabase(data);
-
-  // Trigger debounced GitHub sync after every write
-  try {
-    const { schedulePush } = await import("./github-sync");
-    schedulePush();
-  } catch {
-    // github-sync may not be loaded yet during init
-  }
-}
-
-export function exportBytes(): Uint8Array {
-  return getDb().export();
-}
-
-export async function importBytes(data: Uint8Array): Promise<void> {
-  const SQL = await getSql();
-  if (db) db.close();
-  db = new SQL.Database(data);
-  runSchema(db);
-  await save();
-}
-
-export function isInitialized(): boolean {
-  return db !== null;
-}
+// Re-export for anything that imports from $lib/db/index
+// Note: `run` is the wrapped version that tracks dirty state,
+// not the raw supahub `run`.
+export {
+  getDb,
+  run,
+  queryAll,
+  queryOne,
+  save,
+  exportBytes,
+  importBytes,
+  isInitialized,
+};
