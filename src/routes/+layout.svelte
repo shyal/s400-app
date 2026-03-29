@@ -16,6 +16,7 @@
   import { Toaster } from "$lib/components/ui/sonner";
   import BackgroundWaves from "$lib/components/BackgroundWaves.svelte";
   import WaterReminder from "$lib/components/WaterReminder.svelte";
+  import SyncDebugModal from "$lib/components/SyncDebugModal.svelte";
 
   import HomeIcon from "@lucide/svelte/icons/house";
   import DumbbellIcon from "@lucide/svelte/icons/dumbbell";
@@ -125,6 +126,7 @@
 <Toaster position="top-center" richColors />
 {#if initialized && authStore.isAuthenticated}
   <WaterReminder />
+  <SyncDebugModal />
 {/if}
 
 <style>
