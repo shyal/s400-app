@@ -330,10 +330,19 @@
     }
   }
 
+  let prevOpen = false;
   $effect(() => {
-    if (open) {
-      refreshStats();
-      checkRemote();
+    const isOpen = open;
+    if (isOpen && !prevOpen) {
+      prevOpen = true;
+      // Use untracked calls to avoid infinite loop (log() reads+writes logs $state)
+      queueMicrotask(() => {
+        refreshStats();
+        checkRemote();
+      });
+    }
+    if (!isOpen) {
+      prevOpen = false;
     }
   });
 </script>
