@@ -40,6 +40,7 @@
   "type": "module",
   "dependencies": {
     "marked": "^17.0.1",
-    "sql.js": "^1.14.1"
+    "sql.js": "^1.14.1",
+    "supahub": "file:packages/supahub"
   }
 }
