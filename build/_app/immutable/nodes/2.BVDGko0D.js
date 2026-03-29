@@ -1,1 +1,0 @@
-import{c as e,a as m}from"../chunks/DOnliuDU.js";import{p as i,f as s,a as p}from"../chunks/CFgyhC0k.js";import{s as n}from"../chunks/79oYwjcn.js";import{b as f}from"../chunks/Ba7p790M.js";import{a as c}from"../chunks/CgnLySsg.js";function v(t,r){i(r,!0),c.isAuthenticated&&f.ensureHydrated();var a=e(),o=s(a);n(o,()=>r.children),m(t,a),p()}export{v as component};
