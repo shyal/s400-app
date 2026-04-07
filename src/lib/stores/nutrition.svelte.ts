@@ -11,6 +11,8 @@ import type {
   GlucoseReading,
   GlucoseModelParams,
   GlucoseModelType,
+  FastingDay,
+  FastingType,
 } from "$lib/types";
 import { uuid } from "$lib/uuid";
 import { localDateStr } from "$lib/utils/date";
@@ -38,6 +40,9 @@ import {
   computeRecipeMacros,
   fetchSupplementStacks,
   upsertSupplementStacks,
+  fetchFastingDays,
+  upsertFastingDay,
+  deleteFastingDay as deleteFastingDayApi,
 } from "$lib/services/nutritionData";
 import {
   fetchGlucoseReadings,
@@ -259,6 +264,7 @@ function createNutritionStore() {
   let glucoseReadings = $state<GlucoseReading[]>([]);
   let glucoseModelParams = $state<GlucoseModelParams>(defaultParams());
   let stripsRemaining = $state(50);
+  let fastingDays = $state<FastingDay[]>([]);
 
   // ── Recipes ──
 
@@ -488,6 +494,34 @@ function createNutritionStore() {
     );
   }
 
+  // ── Fasting Days ──
+
+  function toggleFastingDay(
+    date: string,
+    type: FastingType = "full",
+    notes?: string,
+  ) {
+    const existing = fastingDays.find((d) => d.date === date);
+    if (existing) {
+      fastingDays = fastingDays.filter((d) => d.id !== existing.id);
+      deleteFastingDayApi(existing.id).catch(() => {});
+    } else {
+      const day: FastingDay = {
+        id: uuid(),
+        date,
+        type,
+        duration_hours: null,
+        notes: notes ?? null,
+      };
+      fastingDays = [...fastingDays, day];
+      upsertFastingDay(day).catch(() => {});
+    }
+  }
+
+  function isFastingDay(date: string): boolean {
+    return fastingDays.some((d) => d.date === date);
+  }
+
   // ── Glucose ──
 
   /** Refit the glucose model using ALL historical readings + meals */
@@ -574,7 +608,7 @@ function createNutritionStore() {
 
   async function hydrate() {
     try {
-      const [r, f, w, s, t, wl, ss, gl, gmp] = await Promise.all([
+      const [r, f, w, s, t, wl, ss, gl, gmp, fd] = await Promise.all([
         fetchRecipes(),
         fetchFoodEntries(selectedDate),
         fetchWaterEntries(selectedDate),
@@ -584,6 +618,7 @@ function createNutritionStore() {
         fetchSupplementStacks(),
         fetchGlucoseReadings(selectedDate),
         fetchGlucoseModelParams(),
+        fetchFastingDays(),
       ]);
       if (r.length > 0) {
         recipes = r;
@@ -599,6 +634,9 @@ function createNutritionStore() {
       }
       if (gmp) {
         glucoseModelParams = gmp;
+      }
+      if (fd.length > 0) {
+        fastingDays = fd;
       }
 
       foodEntries = f;
@@ -690,6 +728,9 @@ function createNutritionStore() {
     get fastBrokenAt() {
       return fastBrokenAt;
     },
+    get fastingDays() {
+      return fastingDays;
+    },
 
     get feedingWindow(): {
       isOpen: boolean;
@@ -748,6 +789,8 @@ function createNutritionStore() {
     assessFastImpact,
     breakFast,
     inferFastBroken,
+    toggleFastingDay,
+    isFastingDay,
 
     predictGlucose(
       activities: import("$lib/types").StravaActivity[] = [],

@@ -1,10 +1,13 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { pull as syncPull, getSyncStatus } from "$lib/db/github-sync";
   import {
-    pull as syncPull,
-    getSyncStatus,
-  } from "$lib/db/github-sync";
-  import { isDirty, exportBytes, queryAll, queryOne, push as supahubPush } from "supahub";
+    isDirty,
+    exportBytes,
+    queryAll,
+    queryOne,
+    push as supahubPush,
+  } from "supahub";
 
   let open = $state(false);
   let logs = $state<{ time: string; level: string; msg: string }[]>([]);

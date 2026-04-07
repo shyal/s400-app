@@ -240,6 +240,16 @@ CREATE TABLE IF NOT EXISTS strava_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_strava_date ON strava_activities(start_date);
 
+CREATE TABLE IF NOT EXISTS fasting_days (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL DEFAULT 'full',
+  duration_hours REAL,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_fasting_date ON fasting_days(date DESC);
+
 CREATE TABLE IF NOT EXISTS github_sync_meta (
   id INTEGER PRIMARY KEY CHECK (id = 1) DEFAULT 1,
   last_push_at TEXT,

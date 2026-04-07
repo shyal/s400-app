@@ -58,6 +58,7 @@
   <WeightChart
     {entries}
     {goalKg}
+    fastingDates={nutritionStore.fastingDays.map((d) => d.date)}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
     movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
   />

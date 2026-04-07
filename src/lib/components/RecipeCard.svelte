@@ -112,7 +112,7 @@
 
         {#if recipe.ingredients?.length}
           <div class="text-[10px] text-muted-foreground mt-1.5 space-y-0.5">
-            {#each recipe.ingredients as ing (ing.id)}
+            {#each recipe.ingredients as ing, i (ing.id ?? `ing-${i}`)}
               <div>
                 {ing.quantity}{ing.quantity_unit}
                 {ing.ingredient?.name ?? "unknown"}

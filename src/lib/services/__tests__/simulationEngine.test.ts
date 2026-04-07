@@ -3,6 +3,7 @@ import {
   weightedLinearRegression,
   effectiveDailyRate,
   estimateLeanMass,
+  bodyFatTrend,
   muscleMassTrend,
   derivedBodyFat,
   visceralFatCorrelation,
@@ -423,6 +424,54 @@ describe("muscleMassTrend", () => {
       makeWeightEntry({ date: "2026-01-01", muscle_mass_kg: 59 }),
     ];
     const result = muscleMassTrend(entries);
+    expect(result.dailyRate).toBe(0);
+  });
+});
+
+// ── bodyFatTrend ──
+
+describe("bodyFatTrend", () => {
+  it("returns zeros for no body fat data", () => {
+    const result = bodyFatTrend([]);
+    expect(result.latestBf).toBe(0);
+    expect(result.dailyRate).toBe(0);
+  });
+
+  it("returns flat for single entry", () => {
+    const entries = [makeWeightEntry({ date: "2026-01-15", body_fat_pct: 25 })];
+    const result = bodyFatTrend(entries);
+    expect(result.latestBf).toBe(25);
+    expect(result.dailyRate).toBe(0);
+  });
+
+  it("detects decreasing body fat trend", () => {
+    const entries = [
+      makeWeightEntry({ date: "2026-01-01", body_fat_pct: 28 }),
+      makeWeightEntry({ date: "2026-01-11", body_fat_pct: 27 }),
+      makeWeightEntry({ date: "2026-01-21", body_fat_pct: 26 }),
+    ];
+    const result = bodyFatTrend(entries);
+    expect(result.latestBf).toBe(26);
+    expect(result.dailyRate).toBeCloseTo(-0.1, 2);
+  });
+
+  it("ignores entries without body fat data", () => {
+    const entries = [
+      makeWeightEntry({ date: "2026-01-01", body_fat_pct: 28 }),
+      makeWeightEntry({ date: "2026-01-05", body_fat_pct: null }),
+      makeWeightEntry({ date: "2026-01-11", body_fat_pct: 27 }),
+    ];
+    const result = bodyFatTrend(entries);
+    expect(result.latestBf).toBe(27);
+    expect(result.dailyRate).toBeCloseTo(-0.1, 2);
+  });
+
+  it("handles same-day entries (zero variance in x)", () => {
+    const entries = [
+      makeWeightEntry({ date: "2026-01-01", body_fat_pct: 25 }),
+      makeWeightEntry({ date: "2026-01-01", body_fat_pct: 26 }),
+    ];
+    const result = bodyFatTrend(entries);
     expect(result.dailyRate).toBe(0);
   });
 });
@@ -1080,7 +1129,7 @@ describe("generateProjection", () => {
     expect(lastPoint.muscle_mass_kg).toBeGreaterThan(firstPoint.muscle_mass_kg);
   });
 
-  it("strengthProgressing causes faster body fat drop", () => {
+  it("uses direct BF% trend when body fat data is available", () => {
     const entries = [
       makeWeightEntry({
         date: "2026-01-01",
@@ -1108,6 +1157,8 @@ describe("generateProjection", () => {
       }),
     ];
 
+    // With direct BF% regression, strengthProgressing doesn't affect BF% projection
+    // because BF% is projected from its own trend, not derived from weight-muscle
     const withStrength = generateProjection(entries, "current", {
       ...config,
       strengthProgressing: true,
@@ -1120,7 +1171,122 @@ describe("generateProjection", () => {
     const lastWith = withStrength.points[withStrength.points.length - 1];
     const lastWithout = without.points[without.points.length - 1];
 
-    // With strength progressing: muscle flat → more weight loss is fat → lower bf%
+    // BF% should be the same since it's driven by direct trend, not derived
+    expect(lastWith.body_fat_pct).toBeCloseTo(lastWithout.body_fat_pct, 1);
+
+    // But muscle mass should differ (clamped vs not)
+    expect(lastWith.muscle_mass_kg).toBeGreaterThan(lastWithout.muscle_mass_kg);
+  });
+
+  it("extends horizon for visceral fat goal", () => {
+    const entries = [
+      makeWeightEntry({
+        date: "2026-01-01",
+        weight_kg: 85,
+        visceral_fat: 12,
+      }),
+      makeWeightEntry({
+        date: "2026-01-11",
+        weight_kg: 84,
+        visceral_fat: 11,
+      }),
+      makeWeightEntry({
+        date: "2026-01-21",
+        weight_kg: 83,
+        visceral_fat: 10,
+      }),
+      makeWeightEntry({
+        date: "2026-01-31",
+        weight_kg: 82,
+        visceral_fat: 9,
+      }),
+    ];
+    const vfConfig = { ...config, goalVisceralFat: 5 };
+    const result = generateProjection(entries, "current", vfConfig);
+
+    // Projection should extend beyond normal goal date to reach VF target
+    expect(result.points.length).toBeGreaterThan(0);
+    // Last point should have visceral fat heading toward the goal
+    const lastPoint = result.points[result.points.length - 1];
+    expect(lastPoint.visceral_fat).toBeLessThan(9);
+  });
+
+  it("extends horizon for body fat goal", () => {
+    const entries = [
+      makeWeightEntry({
+        date: "2026-01-01",
+        weight_kg: 85,
+        body_fat_pct: 25,
+      }),
+      makeWeightEntry({
+        date: "2026-01-11",
+        weight_kg: 84,
+        body_fat_pct: 24.5,
+      }),
+      makeWeightEntry({
+        date: "2026-01-21",
+        weight_kg: 83,
+        body_fat_pct: 24,
+      }),
+      makeWeightEntry({
+        date: "2026-01-31",
+        weight_kg: 82,
+        body_fat_pct: 23.5,
+      }),
+    ];
+    // BF% dropping at -0.05/day, from 23.5 to 15 = 8.5% to go = 170 days
+    // Goal date is June 1 (~120 days from Feb 1) — horizon should extend past that
+    const bfConfig = { ...config, goalBodyFatPct: 15 };
+    const resultWithBfGoal = generateProjection(entries, "current", bfConfig);
+    const resultWithout = generateProjection(entries, "current", config);
+
+    // With BF% goal, projection should extend further
+    expect(resultWithBfGoal.points.length).toBeGreaterThan(
+      resultWithout.points.length,
+    );
+    // Last BF% point should be near or below the goal
+    const lastPoint =
+      resultWithBfGoal.points[resultWithBfGoal.points.length - 1];
+    expect(lastPoint.body_fat_pct).toBeLessThanOrEqual(15.5);
+  });
+
+  it("falls back to derived BF% when no body fat data available", () => {
+    const entries = [
+      makeWeightEntry({
+        date: "2026-01-01",
+        weight_kg: 85,
+        muscle_mass_kg: 60,
+      }),
+      makeWeightEntry({
+        date: "2026-01-11",
+        weight_kg: 84,
+        muscle_mass_kg: 59.5,
+      }),
+      makeWeightEntry({
+        date: "2026-01-21",
+        weight_kg: 83,
+        muscle_mass_kg: 59,
+      }),
+      makeWeightEntry({
+        date: "2026-01-31",
+        weight_kg: 82,
+        muscle_mass_kg: 58.5,
+      }),
+    ];
+
+    const withStrength = generateProjection(entries, "current", {
+      ...config,
+      strengthProgressing: true,
+    });
+    const without = generateProjection(entries, "current", {
+      ...config,
+      strengthProgressing: false,
+    });
+
+    const lastWith = withStrength.points[withStrength.points.length - 1];
+    const lastWithout = without.points[without.points.length - 1];
+
+    // Without BF% data, falls back to derived: strength clamping muscle → faster bf drop
     expect(lastWith.body_fat_pct).toBeLessThan(lastWithout.body_fat_pct);
   });
 });

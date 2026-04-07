@@ -182,6 +182,45 @@ export function estimateLeanMass(
 }
 
 /**
+ * Body fat % trend: returns { latestBf, dailyRate } from entries with body_fat_pct data.
+ * Uses simple linear regression on body_fat_pct over time.
+ */
+export function bodyFatTrend(entries: WeightEntry[]): {
+  latestBf: number;
+  dailyRate: number;
+} {
+  const withBf = entries
+    .filter((e) => e.body_fat_pct != null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (withBf.length === 0) return { latestBf: 0, dailyRate: 0 };
+  if (withBf.length === 1)
+    return { latestBf: withBf[0].body_fat_pct!, dailyRate: 0 };
+
+  const t0 = new Date(withBf[0].date).getTime();
+  const n = withBf.length;
+  let sumX = 0,
+    sumY = 0,
+    sumXX = 0,
+    sumXY = 0;
+  for (const e of withBf) {
+    const x = (new Date(e.date).getTime() - t0) / (1000 * 60 * 60 * 24);
+    const y = e.body_fat_pct!;
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumXY += x * y;
+  }
+
+  const denom = n * sumXX - sumX * sumX;
+  const latestBf = withBf[withBf.length - 1].body_fat_pct!;
+  if (Math.abs(denom) < 1e-12) return { latestBf, dailyRate: 0 };
+
+  const dailyRate = (n * sumXY - sumX * sumY) / denom;
+  return { latestBf, dailyRate };
+}
+
+/**
  * Muscle mass trend: returns { latestMuscle, dailyRate } from entries with muscle data.
  * Uses simple linear regression on muscle_mass_kg over time.
  */
@@ -440,6 +479,9 @@ export interface SamplePathComposition {
   bfOffset: number;
   vfSlope: number;
   vfIntercept: number;
+  /** Direct BF% trend from regression on actual readings */
+  latestBf: number;
+  bfDailyRate: number;
 }
 
 /**
@@ -463,6 +505,8 @@ export function generateSamplePaths(
   for (let p = 0; p < n; p++) {
     const points: SamplePathPoint[] = [];
     let w = latestWeight;
+    // BF% random walk: accumulate noise like weight does for proper MC fan-out
+    let bf = composition ? composition.latestBf : 0;
 
     for (let d = 1; d <= totalDays; d++) {
       const date = new Date(today.getTime() + d * 24 * 60 * 60 * 1000);
@@ -480,9 +524,17 @@ export function generateSamplePaths(
           composition.latestMuscle +
           composition.muscleDailyRate * d +
           muscleNoise;
-        body_fat_pct =
-          (muscle_mass_kg > 0 ? derivedBodyFat(w, muscle_mass_kg) : 0) +
-          composition.bfOffset;
+        // Use direct BF% regression when available, fall back to derived
+        if (composition.latestBf > 0) {
+          // Random walk: accumulate daily rate + noise (mirrors weight path behavior)
+          const bfNoise = boxMullerTransform(rng) * 0.15;
+          bf += composition.bfDailyRate + bfNoise;
+          body_fat_pct = bf;
+        } else {
+          body_fat_pct =
+            (muscle_mass_kg > 0 ? derivedBodyFat(w, muscle_mass_kg) : 0) +
+            composition.bfOffset;
+        }
         visceral_fat = composition.vfSlope * w + composition.vfIntercept;
       }
 
@@ -556,6 +608,7 @@ export function generateProjection(
     config.strengthProgressing && rawMuscleTrend.dailyRate < 0
       ? { ...rawMuscleTrend, dailyRate: 0 }
       : rawMuscleTrend;
+  const bfTrend = bodyFatTrend(entries);
   const vfCorr = visceralFatCorrelation(entries);
 
   const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
@@ -626,6 +679,19 @@ export function generateProjection(
     }
   }
 
+  // Extend horizon for body fat goal if needed
+  if (
+    config.goalBodyFatPct != null &&
+    bfTrend.latestBf > 0 &&
+    bfTrend.dailyRate < 0 &&
+    bfTrend.latestBf > config.goalBodyFatPct
+  ) {
+    const daysNeededForBf = Math.ceil(
+      (bfTrend.latestBf - config.goalBodyFatPct) / Math.abs(bfTrend.dailyRate),
+    );
+    totalDays = Math.min(Math.max(totalDays, daysNeededForBf), 730);
+  }
+
   // Use GP projection for 'current' scenario, linear for others
   const useGP = scenario === "current" && entries.length >= 2;
   const gpResult = useGP
@@ -660,7 +726,11 @@ export function generateProjection(
       muscleTrend.latestMuscle > 0
         ? muscleTrend.latestMuscle + muscleTrend.dailyRate * d
         : leanMass;
-    const bf = (muscleKg > 0 ? derivedBodyFat(weight, muscleKg) : 0) + bfOffset;
+    // Use direct BF% regression when available, fall back to derived
+    const bf =
+      bfTrend.latestBf > 0
+        ? bfTrend.latestBf + bfTrend.dailyRate * d
+        : (muscleKg > 0 ? derivedBodyFat(weight, muscleKg) : 0) + bfOffset;
     const sigma = gpResult
       ? (gpResult.upper[d] - gpResult.lower[d]) / (2 * 1.96)
       : projectionSigma(d, reg.residualStdDev, vol);
@@ -710,8 +780,11 @@ export function generateProjection(
       ? muscleTrend.latestMuscle + muscleTrend.dailyRate * totalDays
       : leanMass;
   projectedBfAtGoal =
-    (finalMuscle > 0 ? derivedBodyFat(projectedWeightAtGoal, finalMuscle) : 0) +
-    bfOffset;
+    bfTrend.latestBf > 0
+      ? bfTrend.latestBf + bfTrend.dailyRate * totalDays
+      : (finalMuscle > 0
+          ? derivedBodyFat(projectedWeightAtGoal, finalMuscle)
+          : 0) + bfOffset;
 
   // Generate sample paths for 'current' scenario only
   const samplePaths =
@@ -729,6 +802,8 @@ export function generateProjection(
             bfOffset,
             vfSlope: vfCorr.slope,
             vfIntercept: vfCorr.intercept,
+            latestBf: bfTrend.latestBf,
+            bfDailyRate: bfTrend.dailyRate,
           },
         )
       : [];

@@ -8,6 +8,8 @@ import type {
   WeightEntry,
   SupplementEntry,
   SupplementStacks,
+  FastingDay,
+  FastingType,
 } from "$lib/types";
 
 // ── Recipes ──
@@ -559,6 +561,61 @@ function rowToSupplementEntry(row: Record<string, unknown>): SupplementEntry {
     time: row.time as string,
     name: row.name as string,
     dose: row.dose as string | null,
+    notes: row.notes as string | null,
+  };
+}
+
+// ── Fasting Days ──
+
+export async function fetchFastingDays(
+  limit: number = 90,
+): Promise<FastingDay[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("fasting_days")
+    .select("*")
+    .order("date", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("fetchFastingDays:", error);
+    return [];
+  }
+  return (data ?? []).map(rowToFastingDay);
+}
+
+export async function upsertFastingDay(day: FastingDay): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase.from("fasting_days").upsert({
+    id: day.id,
+    date: day.date,
+    type: day.type,
+    duration_hours: day.duration_hours ?? null,
+    notes: day.notes ?? null,
+  });
+  if (error) {
+    console.error("upsertFastingDay:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteFastingDay(id: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase.from("fasting_days").delete().eq("id", id);
+  if (error) {
+    console.error("deleteFastingDay:", error);
+    return false;
+  }
+  return true;
+}
+
+function rowToFastingDay(row: Record<string, unknown>): FastingDay {
+  return {
+    id: row.id as string,
+    date: row.date as string,
+    type: row.type as FastingType,
+    duration_hours:
+      row.duration_hours != null ? Number(row.duration_hours) : null,
     notes: row.notes as string | null,
   };
 }

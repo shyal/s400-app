@@ -8,10 +8,12 @@
   import TrendingDownIcon from "@lucide/svelte/icons/trending-down";
   import TargetIcon from "@lucide/svelte/icons/target";
   import DumbbellIcon from "@lucide/svelte/icons/dumbbell";
+  import ZapOffIcon from "@lucide/svelte/icons/zap-off";
 
   interface Props {
     entries: WeightEntry[];
     workouts?: Workout[];
+    fastingDates?: string[];
     goalKg?: number;
     goalDate?: string;
     startingKg?: number;
@@ -23,6 +25,7 @@
   let {
     entries,
     workouts = [],
+    fastingDates = [],
     goalKg = 72,
     goalDate = "2026-06-01",
     startingKg = 86.4,
@@ -41,6 +44,9 @@
 
   // Workout dates as a Set for O(1) lookup
   const gymDates = $derived(new Set(workouts.map((w) => w.date)));
+
+  // Fasting dates as a Set for O(1) lookup
+  const fastingDateSet = $derived(new Set(fastingDates));
 
   // Configurable moving average (SMA or EMA)
   const movingAvg = $derived.by(() => {
@@ -207,6 +213,18 @@
         date: e.date,
       }))
       .filter((m) => gymDates.has(m.date))
+      .filter((m, i, arr) => arr.findIndex((a) => a.date === m.date) === i),
+  );
+
+  // Fasting markers (data points that fall on fasting dates)
+  const fastingMarkers = $derived(
+    sorted
+      .map((e) => ({
+        x: dateToX(e.date),
+        y: scaleY(e.weight_kg),
+        date: e.date,
+      }))
+      .filter((m) => fastingDateSet.has(m.date))
       .filter((m, i, arr) => arr.findIndex((a) => a.date === m.date) === i),
   );
 
@@ -406,6 +424,18 @@
           </g>
         {/each}
 
+        <!-- Fasting markers -->
+        {#each fastingMarkers as marker (marker.date)}
+          <g transform="translate({marker.x}, {marker.y - 6})">
+            <text
+              text-anchor="middle"
+              fill="oklch(0.65 0.18 295)"
+              font-size="5"
+              font-weight="600">fast</text
+            >
+          </g>
+        {/each}
+
         <!-- Projection overlay -->
         {#if projection}
           <!-- Today divider -->
@@ -502,6 +532,12 @@
           <span class="flex items-center gap-1">
             <DumbbellIcon class="h-2.5 w-2.5 text-emerald-400" />
             Gym
+          </span>
+        {/if}
+        {#if fastingMarkers.length > 0}
+          <span class="flex items-center gap-1">
+            <ZapOffIcon class="h-2.5 w-2.5 text-violet-400" />
+            Fast
           </span>
         {/if}
       </div>

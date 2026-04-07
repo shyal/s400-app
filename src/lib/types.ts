@@ -326,6 +326,18 @@ export interface StravaActivity {
   kilojoules: number | null;
 }
 
+// ── Fasting ──
+
+export type FastingType = "full" | "extended" | "water_only" | "fat_fast";
+
+export interface FastingDay {
+  id: string;
+  date: string;
+  type: FastingType;
+  duration_hours?: number | null;
+  notes?: string | null;
+}
+
 // ── Simulation ──
 
 export type SimScenario = "current" | "goal" | "custom";
@@ -368,6 +380,8 @@ export interface SimulationResult {
 export interface SimulationConfig {
   goalKg: number;
   goalDate: string;
+  /** Target body fat % — projection extends until this is reached */
+  goalBodyFatPct?: number;
   /** Target visceral fat level — projection extends until this is reached */
   goalVisceralFat?: number;
   customWeeklyRate?: number;

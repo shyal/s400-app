@@ -35,6 +35,9 @@ import {
   fetchFrequentSupplements,
   fetchSupplementStacks,
   upsertSupplementStacks,
+  fetchFastingDays,
+  upsertFastingDay,
+  deleteFastingDay,
 } from "$lib/services/nutritionData";
 import {
   makeRecipe,
@@ -42,6 +45,7 @@ import {
   makeWaterEntry,
   makeWeightEntry,
   makeSupplementEntry,
+  makeFastingDay,
 } from "../../../test/fixtures";
 
 beforeEach(() => {
@@ -1121,6 +1125,100 @@ describe("upsertSupplementStacks", () => {
   });
 });
 
+describe("fetchFastingDays", () => {
+  it("returns mapped fasting days", async () => {
+    mockSb.__setTableResult("fasting_days", {
+      data: [
+        {
+          id: "fd1",
+          date: "2026-04-07",
+          type: "full",
+          duration_hours: 36,
+          notes: "Recovery fast",
+        },
+      ],
+      error: null,
+    });
+    const result = await fetchFastingDays();
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe("2026-04-07");
+    expect(result[0].type).toBe("full");
+    expect(result[0].duration_hours).toBe(36);
+    expect(result[0].notes).toBe("Recovery fast");
+  });
+
+  it("returns [] on error", async () => {
+    mockSb.__setTableResult("fasting_days", {
+      data: null,
+      error: { message: "err" },
+    });
+    const result = await fetchFastingDays();
+    expect(result).toEqual([]);
+  });
+
+  it("handles null data", async () => {
+    mockSb.__setTableResult("fasting_days", { data: null, error: null });
+    const result = await fetchFastingDays();
+    expect(result).toEqual([]);
+  });
+
+  it("handles null duration_hours", async () => {
+    mockSb.__setTableResult("fasting_days", {
+      data: [
+        {
+          id: "fd2",
+          date: "2026-04-07",
+          type: "water_only",
+          duration_hours: null,
+          notes: null,
+        },
+      ],
+      error: null,
+    });
+    const result = await fetchFastingDays();
+    expect(result[0].duration_hours).toBeNull();
+    expect(result[0].notes).toBeNull();
+  });
+});
+
+describe("upsertFastingDay", () => {
+  it("returns true on success", async () => {
+    mockSb.__setTableResult("fasting_days", { data: null, error: null });
+    expect(await upsertFastingDay(makeFastingDay())).toBe(true);
+  });
+
+  it("returns false on error", async () => {
+    mockSb.__setTableResult("fasting_days", {
+      data: null,
+      error: { message: "err" },
+    });
+    expect(await upsertFastingDay(makeFastingDay())).toBe(false);
+  });
+
+  it("handles undefined optional fields", async () => {
+    mockSb.__setTableResult("fasting_days", { data: null, error: null });
+    const day = makeFastingDay();
+    delete (day as any).duration_hours;
+    delete (day as any).notes;
+    expect(await upsertFastingDay(day)).toBe(true);
+  });
+});
+
+describe("deleteFastingDay", () => {
+  it("returns true on success", async () => {
+    mockSb.__setTableResult("fasting_days", { data: null, error: null });
+    expect(await deleteFastingDay("fd1")).toBe(true);
+  });
+
+  it("returns false on error", async () => {
+    mockSb.__setTableResult("fasting_days", {
+      data: null,
+      error: { message: "err" },
+    });
+    expect(await deleteFastingDay("fd1")).toBe(false);
+  });
+});
+
 describe("with null supabase", () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -1259,5 +1357,20 @@ describe("with null supabase", () => {
     expect(
       await upsertSupplementStacks({ morning: [], noon: [], evening: [] }),
     ).toBe(false);
+  });
+
+  it("fetchFastingDays returns []", async () => {
+    const { fetchFastingDays } = await import("$lib/services/nutritionData");
+    expect(await fetchFastingDays()).toEqual([]);
+  });
+
+  it("upsertFastingDay returns false", async () => {
+    const { upsertFastingDay } = await import("$lib/services/nutritionData");
+    expect(await upsertFastingDay({} as any)).toBe(false);
+  });
+
+  it("deleteFastingDay returns false", async () => {
+    const { deleteFastingDay } = await import("$lib/services/nutritionData");
+    expect(await deleteFastingDay("x")).toBe(false);
   });
 });

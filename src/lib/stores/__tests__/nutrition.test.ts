@@ -79,6 +79,9 @@ vi.mock("$lib/services/nutritionData", () => ({
     fiber_g: 5,
     water_ml: 0,
   })),
+  fetchFastingDays: vi.fn(() => Promise.resolve([])),
+  upsertFastingDay: vi.fn(() => Promise.resolve(true)),
+  deleteFastingDay: vi.fn(() => Promise.resolve(true)),
 }));
 
 describe("nutritionStore", () => {
@@ -2074,6 +2077,47 @@ describe("nutritionStore", () => {
       });
       await nutritionStore.hydrate();
       expect(nutritionStore.modelLabel).toBe("Personalized");
+    });
+  });
+
+  describe("fasting days", () => {
+    it("starts with empty fasting days", () => {
+      expect(nutritionStore.fastingDays).toEqual([]);
+    });
+
+    it("isFastingDay returns false for unmarked date", () => {
+      expect(nutritionStore.isFastingDay("2026-04-07")).toBe(false);
+    });
+
+    it("toggleFastingDay marks a day as fasting", async () => {
+      nutritionStore.toggleFastingDay("2026-04-07");
+      expect(nutritionStore.isFastingDay("2026-04-07")).toBe(true);
+      expect(nutritionStore.fastingDays).toHaveLength(1);
+      expect(nutritionStore.fastingDays[0].type).toBe("full");
+    });
+
+    it("toggleFastingDay unmarks a fasting day", async () => {
+      nutritionStore.toggleFastingDay("2026-04-07");
+      expect(nutritionStore.isFastingDay("2026-04-07")).toBe(true);
+      nutritionStore.toggleFastingDay("2026-04-07");
+      expect(nutritionStore.isFastingDay("2026-04-07")).toBe(false);
+      expect(nutritionStore.fastingDays).toHaveLength(0);
+    });
+
+    it("hydrate loads fasting days", async () => {
+      const svc = await import("$lib/services/nutritionData");
+      (svc.fetchFastingDays as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          id: "fd1",
+          date: "2026-04-07",
+          type: "full",
+          duration_hours: 36,
+          notes: "Recovery fast",
+        },
+      ]);
+      await nutritionStore.hydrate();
+      expect(nutritionStore.fastingDays).toHaveLength(1);
+      expect(nutritionStore.isFastingDay("2026-04-07")).toBe(true);
     });
   });
 });

@@ -18,6 +18,7 @@ import type {
   TestEquipment,
   GlucoseReading,
   GlucoseModelParams,
+  FastingDay,
 } from "$lib/types";
 import type {
   MealEvent,
@@ -356,6 +357,21 @@ export function makeGPGlucosePoint(
     value: 120,
     upper: 135,
     lower: 105,
+    ...overrides,
+  };
+}
+
+// ── Fasting fixtures ──
+
+export function makeFastingDay(
+  overrides: Partial<FastingDay> = {},
+): FastingDay {
+  return {
+    id: crypto.randomUUID(),
+    date: "2025-01-15",
+    type: "full",
+    duration_hours: 36,
+    notes: null,
     ...overrides,
   };
 }

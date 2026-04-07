@@ -85,6 +85,7 @@
   const simConfig = $derived<SimulationConfig>({
     goalKg: goalWeightKg,
     goalDate: "2026-06-01",
+    goalBodyFatPct: goalBodyFatPct,
     goalVisceralFat: goalVisceralFat,
     strengthProgressing: isStrengthProgressing(workoutStore.history.workouts),
   });
@@ -371,6 +372,7 @@
   <WeightChart
     entries={nutritionStore.weightLog}
     workouts={workoutStore.history.workouts}
+    fastingDates={nutritionStore.fastingDays.map((d) => d.date)}
     projection={currentProjection}
     movingAverageWindow={settingsStore.value.movingAverageWindow ?? 7}
     movingAverageType={settingsStore.value.movingAverageType ?? "ema"}
