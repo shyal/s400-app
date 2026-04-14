@@ -3,8 +3,6 @@
     getApiKey,
     setApiKey,
     sendMessage,
-    isUsdaProxyEnabled,
-    setUsdaProxy,
     DEFAULT_CHAT_MODEL,
     type ChatMessage,
   } from "$lib/services/anthropicChat";
@@ -35,7 +33,6 @@
   let messagesEl: HTMLDivElement | undefined = $state();
   let expandedTools = $state<Set<number>>(new Set());
   let inputEl: HTMLInputElement | undefined = $state();
-  let proxyEnabled = $state(isUsdaProxyEnabled());
 
   const modelOptions: { value: ChatModel; label: string }[] = [
     { value: "claude-sonnet-4-5-20250929", label: "Sonnet" },
@@ -176,21 +173,6 @@
           <option value={opt.value}>{opt.label}</option>
         {/each}
       </select>
-      <label
-        class="flex items-center gap-1.5 cursor-pointer"
-        title="Proxy USDA calls through edge function (use when VPN blocks API)"
-      >
-        <span class="text-[10px] text-muted-foreground">Proxy</span>
-        <input
-          type="checkbox"
-          class="w-3.5 h-3.5 accent-primary"
-          checked={proxyEnabled}
-          onchange={() => {
-            proxyEnabled = !proxyEnabled;
-            setUsdaProxy(proxyEnabled);
-          }}
-        />
-      </label>
     </div>
   </div>
 

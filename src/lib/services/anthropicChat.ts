@@ -20,32 +20,15 @@ export interface ChatMessage {
   toolResult?: string;
 }
 
-const USDA_API_KEY = "YE2tfUyd991OkBkWHs9zWy8fxpk6aZUco0N2K43J";
 const USDA_PROXY_URL =
-  "https://xfkgbyczaufejklwjrfz.supabase.co/functions/v1/usda-proxy";
-const USDA_PROXY_KEY = "usda-proxy-enabled";
-
-export function isUsdaProxyEnabled(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem(USDA_PROXY_KEY) === "true";
-}
-
-export function setUsdaProxy(enabled: boolean) {
-  localStorage.setItem(USDA_PROXY_KEY, String(enabled));
-}
+  "https://8wa8z4vku0.execute-api.us-east-1.amazonaws.com/";
 
 async function searchUSDA(query: string): Promise<string> {
-  let res: Response;
-  if (isUsdaProxyEnabled()) {
-    res = await fetch(USDA_PROXY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-  } else {
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${encodeURIComponent(query)}&pageSize=5&dataType=Survey%20(FNDDS),SR%20Legacy`;
-    res = await fetch(url);
-  }
+  const res = await fetch(USDA_PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
   if (!res.ok) return `USDA API error: ${res.status}`;
   const data = await res.json();
   if (!data.foods?.length) return `No results found for "${query}".`;

@@ -49,8 +49,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getApiKey,
   setApiKey,
-  isUsdaProxyEnabled,
-  setUsdaProxy,
   sendMessage,
   DEFAULT_CHAT_MODEL,
 } from "$lib/services/anthropicChat";
@@ -77,23 +75,6 @@ describe("getApiKey / setApiKey", () => {
     setApiKey("sk-first");
     setApiKey("sk-second");
     expect(getApiKey()).toBe("sk-second");
-  });
-});
-
-describe("isUsdaProxyEnabled / setUsdaProxy", () => {
-  it("returns false by default", () => {
-    expect(isUsdaProxyEnabled()).toBe(false);
-  });
-
-  it("enables proxy", () => {
-    setUsdaProxy(true);
-    expect(isUsdaProxyEnabled()).toBe(true);
-  });
-
-  it("disables proxy", () => {
-    setUsdaProxy(true);
-    setUsdaProxy(false);
-    expect(isUsdaProxyEnabled()).toBe(false);
   });
 });
 
@@ -472,9 +453,7 @@ describe("sendMessage", () => {
     expect(onToolCall).toHaveBeenCalled();
   });
 
-  it("uses USDA proxy when enabled", async () => {
-    localStorage.setItem("usda-proxy-enabled", "true");
-
+  it("uses USDA Lambda proxy for food search", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce({
@@ -483,7 +462,7 @@ describe("sendMessage", () => {
           query: "rice",
         }),
       })
-      // Proxy call
+      // Lambda proxy call
       .mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -509,9 +488,9 @@ describe("sendMessage", () => {
       vi.fn(),
     );
 
-    // Second call should be to the proxy URL (POST method)
+    // Second call should be to the Lambda proxy URL (POST method)
     const proxyCall = mockFetch.mock.calls[1];
-    expect(proxyCall[0]).toContain("supabase");
+    expect(proxyCall[0]).toContain("execute-api");
     expect(proxyCall[1].method).toBe("POST");
     expect(proxyCall[1].headers["Content-Type"]).toBe("application/json");
     const proxyBody = JSON.parse(proxyCall[1].body);
@@ -1211,16 +1190,6 @@ describe("SSR environment (localStorage undefined)", () => {
     vi.resetModules();
     const { getApiKey } = await import("$lib/services/anthropicChat");
     expect(getApiKey()).toBeNull();
-    globalThis.localStorage = origLS;
-  });
-
-  it("isUsdaProxyEnabled returns false when localStorage is undefined", async () => {
-    const origLS = globalThis.localStorage;
-    // @ts-ignore
-    delete globalThis.localStorage;
-    vi.resetModules();
-    const { isUsdaProxyEnabled } = await import("$lib/services/anthropicChat");
-    expect(isUsdaProxyEnabled()).toBe(false);
     globalThis.localStorage = origLS;
   });
 });
