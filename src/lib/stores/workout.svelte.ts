@@ -395,6 +395,10 @@ function getDefaultWeight(exerciseName: string): number {
     // Lower Back Recovery exercises
     "Goblet Squat": 15,
     "Chest-Supported DB Row": 10,
+    // Hypertrophy program exercises
+    "Lateral Raises": 5,
+    "Bicep Curl": 10,
+    "Tricep Pushdown": 15,
   };
   return defaults[exerciseName] ?? 20;
 }

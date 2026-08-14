@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
 
 vi.mock("$lib/supabase", () => ({ supabase: null }));
 
@@ -11,9 +19,19 @@ import {
 import type { GlucosePoint } from "$lib/services/glucoseModel";
 import { makeGlucoseReading, makeFoodEntry } from "../../../test/fixtures";
 
-// Use a fixed "today" for tests
+// Use a fixed "today" for tests — freeze the clock so date-window logic
+// (e.g. fastingGlucoseTrend's N-day lookback) matches the fixture dates
 const TODAY = "2026-02-14";
 const YESTERDAY = "2026-02-13";
+
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(`${TODAY}T12:00:00`));
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 // ── fastingGlucoseTrend ──
 

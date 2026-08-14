@@ -68,6 +68,68 @@ describe("getProgram", () => {
     expect(p.name).toBe("StrongLifts 5×5");
   });
 
+  it("returns hypertrophy 3-day full body by name", () => {
+    const p = getProgram("hypertrophy3");
+    expect(p.name).toBe("Hypertrophy Full Body (3-Day)");
+    expect(Object.keys(p.workouts)).toEqual(["A", "B", "C"]);
+    expect(p.alternating).toBe(false);
+  });
+
+  it("returns hypertrophy 5-day PPL+UL by name", () => {
+    const p = getProgram("hypertrophy5");
+    expect(p.name).toBe("Hypertrophy PPL + Upper/Lower (5-Day)");
+    expect(Object.keys(p.workouts)).toEqual(["A", "B", "C", "D", "E"]);
+    expect(Object.values(p.workouts).map((d) => d.name)).toEqual([
+      "Push",
+      "Pull",
+      "Legs",
+      "Upper",
+      "Lower",
+    ]);
+  });
+
+  it("hypertrophy programs stay in hypertrophy rep/set ranges", () => {
+    for (const key of ["hypertrophy3", "hypertrophy5"]) {
+      const p = getProgram(key);
+      for (const day of Object.values(p.workouts)) {
+        for (const ex of day.exercises) {
+          expect(ex.reps).toBeGreaterThanOrEqual(6);
+          expect(ex.reps).toBeLessThanOrEqual(15);
+          expect(ex.sets).toBeGreaterThanOrEqual(3);
+          expect(ex.sets).toBeLessThanOrEqual(4);
+          expect(ex.increment_kg).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("hypertrophy 3-day trains squat, bench, and deadlift patterns weekly", () => {
+    const p = getProgram("hypertrophy3");
+    const allExercises = Object.values(p.workouts).flatMap((d) =>
+      d.exercises.map((e) => e.name),
+    );
+    expect(allExercises).toContain("Squat");
+    expect(allExercises).toContain("Bench Press");
+    expect(allExercises).toContain("Deadlift");
+    expect(allExercises).toContain("Romanian Deadlift");
+  });
+
+  it("hypertrophy 5-day hits every muscle at least twice per week", () => {
+    const p = getProgram("hypertrophy5");
+    const daysByExercise = new Map<string, number>();
+    for (const day of Object.values(p.workouts)) {
+      for (const ex of day.exercises) {
+        daysByExercise.set(ex.name, (daysByExercise.get(ex.name) ?? 0) + 1);
+      }
+    }
+    // Key movement patterns appear on two separate days
+    expect(daysByExercise.get("Bench Press")).toBe(2);
+    expect(daysByExercise.get("Lat Pulldown")).toBe(2);
+    expect(daysByExercise.get("Cable Row")).toBe(2);
+    expect(daysByExercise.get("Leg Curl")).toBe(2);
+    expect(daysByExercise.get("Calf Raises")).toBe(2);
+  });
+
   it("has correct exercise definitions for stronglifts A", () => {
     const p = getProgram("stronglifts");
     const workoutA = p.workouts["A"];
@@ -132,10 +194,48 @@ describe("getNextWorkoutType", () => {
     });
   });
 
+  describe("3-day rotation (hypertrophy3)", () => {
+    it("returns A for null (first workout)", () => {
+      expect(getNextWorkoutType(null, "hypertrophy3")).toBe("A");
+    });
+
+    it("cycles A -> B -> C -> A", () => {
+      expect(getNextWorkoutType("A", "hypertrophy3")).toBe("B");
+      expect(getNextWorkoutType("B", "hypertrophy3")).toBe("C");
+      expect(getNextWorkoutType("C", "hypertrophy3")).toBe("A");
+    });
+  });
+
+  describe("5-day rotation (hypertrophy5)", () => {
+    it("returns A for null (first workout)", () => {
+      expect(getNextWorkoutType(null, "hypertrophy5")).toBe("A");
+    });
+
+    it("cycles A -> B -> C -> D -> E -> A", () => {
+      expect(getNextWorkoutType("A", "hypertrophy5")).toBe("B");
+      expect(getNextWorkoutType("B", "hypertrophy5")).toBe("C");
+      expect(getNextWorkoutType("C", "hypertrophy5")).toBe("D");
+      expect(getNextWorkoutType("D", "hypertrophy5")).toBe("E");
+      expect(getNextWorkoutType("E", "hypertrophy5")).toBe("A");
+    });
+  });
+
   it("defaults to custom program when no program specified", () => {
     // default is 'custom'
     expect(getNextWorkoutType("A")).toBe("B");
     expect(getNextWorkoutType("D")).toBe("A");
+  });
+
+  it("restarts at A when lastType is not in the program", () => {
+    // e.g. switching from a 4-day program to stronglifts with lastType "D"
+    expect(getNextWorkoutType("D", "stronglifts")).toBe("A");
+    expect(getNextWorkoutType("custom", "hypertrophy3")).toBe("A");
+  });
+
+  it("falls back to stronglifts cycling for unknown program name", () => {
+    expect(getNextWorkoutType(null, "nonexistent")).toBe("A");
+    expect(getNextWorkoutType("A", "nonexistent")).toBe("B");
+    expect(getNextWorkoutType("B", "nonexistent")).toBe("A");
   });
 });
 

@@ -13,7 +13,7 @@ export interface Exercise {
   sets: WorkoutSet[];
 }
 
-export type WorkoutType = "A" | "B" | "C" | "D" | "custom";
+export type WorkoutType = "A" | "B" | "C" | "D" | "E" | "custom";
 
 export interface Workout {
   id: string;
@@ -58,7 +58,12 @@ export type ChatModel =
 export interface Settings {
   restTimerSeconds: number;
   weightUnit: "kg" | "lb";
-  program: "stronglifts" | "custom" | "recovery";
+  program:
+    | "stronglifts"
+    | "custom"
+    | "recovery"
+    | "hypertrophy3"
+    | "hypertrophy5";
   soundEnabled: boolean;
   vibrationEnabled: boolean;
   increments: Record<string, number>;

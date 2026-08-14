@@ -642,6 +642,28 @@
           Back-friendly A/B — no deadlifts, squats, or barbell rows
         </div>
       </button>
+      <button
+        class="w-full p-3 rounded-lg text-left transition-colors"
+        class:bg-blue-600={settingsStore.value.program === "hypertrophy3"}
+        class:bg-slate-700={settingsStore.value.program !== "hypertrophy3"}
+        onclick={() => settingsStore.update({ program: "hypertrophy3" })}
+      >
+        <div class="font-medium">Hypertrophy Full Body (3-Day)</div>
+        <div class="text-sm text-slate-400">
+          A/B/C full body — every muscle 3×/week, 6–15 reps
+        </div>
+      </button>
+      <button
+        class="w-full p-3 rounded-lg text-left transition-colors"
+        class:bg-blue-600={settingsStore.value.program === "hypertrophy5"}
+        class:bg-slate-700={settingsStore.value.program !== "hypertrophy5"}
+        onclick={() => settingsStore.update({ program: "hypertrophy5" })}
+      >
+        <div class="font-medium">Hypertrophy PPL + U/L (5-Day)</div>
+        <div class="text-sm text-slate-400">
+          Push/Pull/Legs + Upper/Lower — every muscle 2×/week
+        </div>
+      </button>
     </div>
   </div>
 
