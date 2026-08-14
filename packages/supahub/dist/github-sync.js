@@ -123,7 +123,7 @@ export async function push(opts) {
         return { success: false, error: String(e) };
     }
 }
-export async function pull() {
+export async function pull(opts) {
     const meta = getMeta();
     if (!meta.repo || !currentToken)
         return { success: false, updated: false, error: "Not configured" };
@@ -135,13 +135,34 @@ export async function pull() {
             return { success: false, updated: false, error: `GitHub API: ${metaRes.status}` };
         }
         const fileData = await metaRes.json();
-        if (fileData.sha === meta.lastSha)
-            return { success: true, updated: false };
-        const rawRes = await fetch(fileData.download_url);
-        if (!rawRes.ok)
-            return { success: false, updated: false, error: "Failed to download" };
-        const buffer = await rawRes.arrayBuffer();
-        await importBytes(new Uint8Array(buffer));
+        // SHA short-circuit is unsafe: lastSha can match remote even when local DB
+        // is empty or stale (OPFS wipe, failed import after meta update, etc.).
+        // Compare local byte size against remote size as a second check, and allow
+        // callers to force a re-download.
+        if (!opts?.force && fileData.sha === meta.lastSha) {
+            let localSize = 0;
+            try {
+                localSize = exportBytes().byteLength;
+            }
+            catch { }
+            if (localSize === fileData.size)
+                return { success: true, updated: false };
+        }
+        // Fetch raw bytes via the blob API with our PAT. The contents API can
+        // truncate files >1MB and Accept: vnd.github.raw is not always honored on
+        // private repos; the blob API returns the full base64 content reliably.
+        const blobRes = await fetch(`https://api.github.com/repos/${meta.repo}/git/blobs/${fileData.sha}`, { headers: headers() });
+        if (!blobRes.ok) {
+            const errText = await blobRes.text().catch(() => "");
+            return { success: false, updated: false, error: `Failed to download blob: ${blobRes.status} ${errText.slice(0, 200)}` };
+        }
+        const blobJson = await blobRes.json();
+        if (blobJson.encoding !== "base64" || typeof blobJson.content !== "string") {
+            return { success: false, updated: false, error: `Unexpected blob response: encoding=${blobJson.encoding}` };
+        }
+        const buffer = base64ToUint8(blobJson.content);
+        console.log(`[supahub] Pulled ${buffer.byteLength} bytes (remote size: ${fileData.size})`);
+        await importBytes(buffer);
         meta.lastSha = fileData.sha;
         meta.lastPullAt = new Date().toISOString();
         setMeta(meta);
@@ -183,4 +204,13 @@ function uint8ToBase64(bytes) {
         binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
+}
+function base64ToUint8(base64) {
+    // GitHub returns base64 with embedded newlines; atob requires them stripped.
+    const clean = base64.replace(/\s+/g, "");
+    const binary = atob(clean);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++)
+        out[i] = binary.charCodeAt(i);
+    return out;
 }

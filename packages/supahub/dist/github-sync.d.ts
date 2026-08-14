@@ -22,7 +22,9 @@ export declare function push(opts?: {
     success: boolean;
     error?: string;
 }>;
-export declare function pull(): Promise<{
+export declare function pull(opts?: {
+    force?: boolean;
+}): Promise<{
     success: boolean;
     updated: boolean;
     error?: string;

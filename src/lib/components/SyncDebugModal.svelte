@@ -205,18 +205,22 @@
 
   async function forcePull() {
     pulling = true;
-    log("info", "Pulling...");
+    log("info", "Pulling (force)...");
     try {
-      const result = await syncPull();
+      const result = await syncPull({ force: true });
       if (result.success) {
         log(
           "info",
           result.updated
-            ? "Pull succeeded — data updated ✓"
+            ? "Pull succeeded — data updated ✓ reloading..."
             : "Pull succeeded — already up to date",
         );
       } else {
         log("error", `Pull failed: ${result.error}`);
+      }
+      if (result.success && result.updated) {
+        setTimeout(() => location.reload(), 500);
+        return;
       }
     } catch (e) {
       log("error", `Pull exception: ${e}`);

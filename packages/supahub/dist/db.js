@@ -22,7 +22,25 @@ export async function initDb(opts = {}) {
     const SQL = await getSql(configuredWasmUrl);
     const existing = await readDatabase(dbFilename);
     if (existing) {
-        db = new SQL.Database(existing);
+        let candidate = null;
+        try {
+            candidate = new SQL.Database(existing);
+            // sql.js validates the file lazily — force a parse with a trivial query
+            // so a corrupt blob throws here instead of later inside user code.
+            candidate.exec("SELECT 1");
+            db = candidate;
+        }
+        catch (e) {
+            // OPFS/IDB blob is corrupt or not a valid SQLite file (e.g. previous
+            // partial pull). Start with an empty DB so the app can boot; a
+            // subsequent pull will populate it from remote.
+            console.warn(`[supahub] Persisted DB at "${dbFilename}" is corrupt, starting fresh:`, e);
+            try {
+                candidate?.close();
+            }
+            catch { }
+            db = new SQL.Database();
+        }
     }
     else {
         db = new SQL.Database();
@@ -67,9 +85,23 @@ export function exportBytes() {
 }
 export async function importBytes(data) {
     const SQL = await getSql(configuredWasmUrl);
+    // Validate the bytes are actually a SQLite file BEFORE swapping in.
+    // Otherwise a bad fetch (HTML/JSON error body, truncated download) could
+    // poison both the in-memory DB and the OPFS blob.
+    const candidate = new SQL.Database(data);
+    try {
+        candidate.exec("SELECT 1");
+    }
+    catch (e) {
+        try {
+            candidate.close();
+        }
+        catch { }
+        throw new Error(`importBytes: input is not a valid SQLite database (${data.byteLength} bytes): ${e}`);
+    }
     if (db)
         db.close();
-    db = new SQL.Database(data);
+    db = candidate;
     await save();
 }
 export function isInitialized() {
