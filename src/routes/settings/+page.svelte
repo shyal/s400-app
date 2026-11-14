@@ -14,7 +14,8 @@
   import TestEquipmentCard from "$lib/components/TestEquipment.svelte";
   import {
     getSyncStatus,
-    configure as configureSyncRepo,
+    initSync,
+    SYNC_REPO,
     push as syncPush,
     pull as syncPull,
   } from "$lib/db/github-sync";
@@ -28,7 +29,6 @@
   let importingHistory = $state(false);
   let historyImportStatus = $state("");
   let fileInput: HTMLInputElement;
-  let syncRepo = $state(getSyncStatus().repo);
   let syncing = $state(false);
   let syncMessage = $state("");
 
@@ -947,30 +947,18 @@
     <div class="card">
       <h2 class="font-bold mb-4">GitHub Sync</h2>
       <div class="space-y-3">
-        <div>
-          <label class="block text-sm text-slate-400 mb-1" for="sync-repo"
-            >Repository (owner/repo)</label
-          >
-          <input
-            id="sync-repo"
-            type="text"
-            bind:value={syncRepo}
-            placeholder="username/my-fitness-data"
-            class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm"
-            onblur={() => {
-              if (syncRepo.trim()) configureSyncRepo(syncRepo.trim());
-            }}
-          />
-        </div>
+        <p class="text-sm text-slate-400">
+          Repository: <span class="font-mono text-slate-200">{SYNC_REPO}</span>
+        </p>
 
         <div class="flex gap-2">
           <button
             class="btn bg-slate-700 flex-1"
-            disabled={syncing || !syncRepo.trim()}
+            disabled={syncing}
             onclick={async () => {
               syncing = true;
               syncMessage = "";
-              configureSyncRepo(syncRepo.trim());
+              initSync();
               const result = await syncPush();
               syncMessage = result.success
                 ? "Pushed successfully"
@@ -982,11 +970,11 @@
           </button>
           <button
             class="btn bg-slate-700 flex-1"
-            disabled={syncing || !syncRepo.trim()}
+            disabled={syncing}
             onclick={async () => {
               syncing = true;
               syncMessage = "";
-              configureSyncRepo(syncRepo.trim());
+              initSync();
               const result = await syncPull();
               syncMessage = result.success
                 ? result.updated
