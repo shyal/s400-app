@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { goto } from "$app/navigation";
   import { biomarkerStore } from "$lib/stores/biomarker.svelte";
   import BiomarkerCard from "$lib/components/BiomarkerCard.svelte";
@@ -32,7 +33,7 @@
   }
 
   function handleBiomarkerClick(id: string) {
-    goto(`/biomarkers/${id}`);
+    goto(`${base}/biomarkers/${id}`);
   }
 </script>
 
@@ -51,7 +52,7 @@
       </div>
       <h1 class="text-2xl font-bold">Lab Results</h1>
     </div>
-    <Button href="/biomarkers/add" size="sm" class="gap-1.5">
+    <Button href="{base}/biomarkers/add" size="sm" class="gap-1.5">
       <PlusIcon class="h-4 w-4" />
       Add
     </Button>

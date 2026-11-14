@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { nutritionStore } from "$lib/stores/nutrition.svelte";
   import { localDateStr } from "$lib/utils/date";
   import NutritionSummary from "$lib/components/NutritionSummary.svelte";
@@ -1431,7 +1432,7 @@
       </Card.Root>
 
       <!-- Action Buttons -->
-      <Button class="h-12 w-full" onclick={() => goto("/food/add")}>
+      <Button class="h-12 w-full" onclick={() => goto(`${base}/food/add`)}>
         <PlusIcon class="h-4 w-4 mr-1.5" />
         Add Food
       </Button>
@@ -1920,7 +1921,7 @@
       <Button
         variant="link"
         class="w-full text-xs text-muted-foreground"
-        onclick={() => goto("/food/targets")}
+        onclick={() => goto(`${base}/food/targets`)}
       >
         <SlidersHorizontalIcon class="h-3 w-3 mr-1" />
         Edit macro targets

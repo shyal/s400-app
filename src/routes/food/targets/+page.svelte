@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { nutritionStore } from "$lib/stores/nutrition.svelte";
   import { goto } from "$app/navigation";
 
@@ -90,7 +91,7 @@
       fat_g,
       water_ml,
     });
-    goto("/food");
+    goto(`${base}/food`);
   }
 
   // Load latest weight from store if available
@@ -109,7 +110,7 @@
 
 <div class="p-4 space-y-6">
   <div class="flex items-center gap-3">
-    <button class="text-slate-400 text-2xl" onclick={() => goto("/food")}
+    <button class="text-slate-400 text-2xl" onclick={() => goto(`${base}/food`)}
       >‹</button
     >
     <h1 class="text-lg font-bold">Daily Targets</h1>

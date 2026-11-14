@@ -622,6 +622,26 @@
       </button>
       <button
         class="w-full p-3 rounded-lg text-left transition-colors"
+        class:bg-blue-600={settingsStore.value.program === "stronglifts_daily"}
+        class:bg-slate-700={settingsStore.value.program !== "stronglifts_daily"}
+        onclick={() =>
+          settingsStore.update({
+            program: "stronglifts_daily",
+            workoutSchedule: {
+              ...settingsStore.value.workoutSchedule,
+              frequencyDays: 1,
+              extraRestDays: 0,
+            },
+          })}
+      >
+        <div class="font-medium">StrongLifts 5×5 Daily</div>
+        <div class="text-sm text-slate-400">
+          Same lifts in daily half-sessions — lower/upper alternating, no rest
+          days
+        </div>
+      </button>
+      <button
+        class="w-full p-3 rounded-lg text-left transition-colors"
         class:bg-blue-600={settingsStore.value.program === "custom"}
         class:bg-slate-700={settingsStore.value.program !== "custom"}
         onclick={() => settingsStore.update({ program: "custom" })}

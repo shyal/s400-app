@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { workoutStore } from "$lib/stores/workout.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { nutritionStore } from "$lib/stores/nutrition.svelte";
@@ -126,7 +127,7 @@
   function startWorkout(deload: number = 0) {
     workoutStore.startWorkout(nextType, deload);
     toast.success("Let's go!");
-    goto("/workout");
+    goto(`${base}/workout`);
   }
 
   function handleStart() {
@@ -139,7 +140,7 @@
   }
 
   function resumeWorkout() {
-    goto("/workout");
+    goto(`${base}/workout`);
   }
 
   // Hydrate weight data for the chart

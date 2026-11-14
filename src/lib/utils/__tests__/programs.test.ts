@@ -88,6 +88,39 @@ describe("getProgram", () => {
     ]);
   });
 
+  it("returns stronglifts daily split by name", () => {
+    const p = getProgram("stronglifts_daily");
+    expect(p.name).toBe("StrongLifts 5×5 Daily");
+    expect(Object.keys(p.workouts)).toEqual(["A", "B", "C", "D"]);
+    expect(
+      Object.values(p.workouts).map((d) => d.exercises.map((e) => e.name)),
+    ).toEqual([
+      ["Squat"],
+      ["Bench Press", "Barbell Row"],
+      ["Squat", "Deadlift"],
+      ["Overhead Press"],
+    ]);
+  });
+
+  it("stronglifts daily cycle holds exactly one classic A+B pair", () => {
+    const sets = (key: string) =>
+      Object.values(getProgram(key).workouts)
+        .flatMap((d) => d.exercises)
+        .map((e) => `${e.name} ${e.sets}x${e.reps} +${e.increment_kg}`)
+        .sort();
+    expect(sets("stronglifts_daily")).toEqual(sets("stronglifts"));
+  });
+
+  it("stronglifts daily never trains the same lift two days running", () => {
+    const days = Object.values(getProgram("stronglifts_daily").workouts);
+    days.forEach((d, i) => {
+      const next = days[(i + 1) % days.length];
+      for (const e of d.exercises) {
+        expect(next.exercises.map((n) => n.name)).not.toContain(e.name);
+      }
+    });
+  });
+
   it("hypertrophy programs stay in hypertrophy rep/set ranges", () => {
     for (const key of ["hypertrophy3", "hypertrophy5"]) {
       const p = getProgram(key);
@@ -203,6 +236,16 @@ describe("getNextWorkoutType", () => {
       expect(getNextWorkoutType("A", "hypertrophy3")).toBe("B");
       expect(getNextWorkoutType("B", "hypertrophy3")).toBe("C");
       expect(getNextWorkoutType("C", "hypertrophy3")).toBe("A");
+    });
+  });
+
+  describe("4-day rotation (stronglifts_daily)", () => {
+    it("cycles A -> B -> C -> D -> A", () => {
+      expect(getNextWorkoutType(null, "stronglifts_daily")).toBe("A");
+      expect(getNextWorkoutType("A", "stronglifts_daily")).toBe("B");
+      expect(getNextWorkoutType("B", "stronglifts_daily")).toBe("C");
+      expect(getNextWorkoutType("C", "stronglifts_daily")).toBe("D");
+      expect(getNextWorkoutType("D", "stronglifts_daily")).toBe("A");
     });
   });
 

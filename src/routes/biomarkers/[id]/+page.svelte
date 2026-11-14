@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { biomarkerStore } from "$lib/stores/biomarker.svelte";
@@ -64,7 +65,7 @@
   <div class="p-4 space-y-4">
     <FlaskConicalIcon class="h-8 w-8 text-muted-foreground/30" />
     <p class="text-muted-foreground">Biomarker not found</p>
-    <Button variant="outline" href="/biomarkers" class="gap-1.5">
+    <Button variant="outline" href="{base}/biomarkers" class="gap-1.5">
       <ArrowLeftIcon class="h-4 w-4" />
       Back to Labs
     </Button>
@@ -76,7 +77,7 @@
       <Button
         variant="ghost"
         size="sm"
-        href="/biomarkers"
+        href="{base}/biomarkers"
         class="gap-1 -ml-2 mb-2 text-muted-foreground"
       >
         <ArrowLeftIcon class="h-3.5 w-3.5" />

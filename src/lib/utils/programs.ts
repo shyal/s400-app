@@ -59,6 +59,79 @@ const stronglifts: Program = {
   },
 };
 
+// StrongLifts 5×5 spread over daily half-sessions. One A→D cycle holds exactly
+// the lifts of one classic A+B pair. Lower and upper days alternate, so legs
+// and pressing muscles each get 48h between sessions, and the single-lift days
+// (A, D) keep the lower back from being loaded heavily every day.
+const strongliftsDaily: Program = {
+  name: "StrongLifts 5×5 Daily",
+  alternating: false,
+  workouts: {
+    A: {
+      name: "Lower (Squat)",
+      exercises: [
+        {
+          name: "Squat",
+          sets: 5,
+          reps: 5,
+          increment_kg: 2.5,
+          isCompound: true,
+        },
+      ],
+    },
+    B: {
+      name: "Upper (Bench + Row)",
+      exercises: [
+        {
+          name: "Bench Press",
+          sets: 5,
+          reps: 5,
+          increment_kg: 2.5,
+          isCompound: true,
+        },
+        {
+          name: "Barbell Row",
+          sets: 5,
+          reps: 5,
+          increment_kg: 2.5,
+          isCompound: true,
+        },
+      ],
+    },
+    C: {
+      name: "Lower (Squat + Deadlift)",
+      exercises: [
+        {
+          name: "Squat",
+          sets: 5,
+          reps: 5,
+          increment_kg: 2.5,
+          isCompound: true,
+        },
+        {
+          name: "Deadlift",
+          sets: 1,
+          reps: 5,
+          increment_kg: 5,
+          isCompound: true,
+        },
+      ],
+    },
+    D: {
+      name: "Upper (Press)",
+      exercises: [
+        {
+          name: "Overhead Press",
+          sets: 5,
+          reps: 5,
+          increment_kg: 2.5,
+          isCompound: true,
+        },
+      ],
+    },
+  },
+};
+
 const upperLowerSplit: Program = {
   name: "Upper/Lower 4-Day Split",
   alternating: false,
@@ -623,6 +696,7 @@ const hypertrophyPPLUL: Program = {
 
 const programs: Record<string, Program> = {
   stronglifts,
+  stronglifts_daily: strongliftsDaily,
   custom: upperLowerSplit,
   recovery: lowerBackRecovery,
   hypertrophy3: hypertrophyFullBody,

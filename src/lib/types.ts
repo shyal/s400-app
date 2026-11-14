@@ -60,6 +60,7 @@ export interface Settings {
   weightUnit: "kg" | "lb";
   program:
     | "stronglifts"
+    | "stronglifts_daily"
     | "custom"
     | "recovery"
     | "hypertrophy3"

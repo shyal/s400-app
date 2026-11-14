@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { goto } from "$app/navigation";
   import { biomarkerStore } from "$lib/stores/biomarker.svelte";
   import { localDateStr } from "$lib/utils/date";
@@ -56,7 +57,7 @@
         notes || undefined,
         labName || undefined,
       );
-      goto(`/biomarkers/${selectedBiomarkerId}`);
+      goto(`${base}/biomarkers/${selectedBiomarkerId}`);
     } finally {
       saving = false;
     }
@@ -70,7 +71,7 @@
 <div class="p-4 space-y-6">
   <div>
     <a
-      href="/biomarkers"
+      href="{base}/biomarkers"
       class="text-sm text-slate-500 hover:text-slate-300 mb-2 inline-block"
     >
       ← Back
@@ -176,7 +177,7 @@
 
     <!-- Submit -->
     <div class="flex gap-3 pt-4">
-      <a href="/biomarkers" class="btn flex-1 text-center">Cancel</a>
+      <a href="{base}/biomarkers" class="btn flex-1 text-center">Cancel</a>
       <button
         type="submit"
         class="btn-primary flex-1"

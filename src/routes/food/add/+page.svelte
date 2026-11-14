@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { base } from "$app/paths";
   import { nutritionStore } from "$lib/stores/nutrition.svelte";
   import type { FastingAssessment, Macros } from "$lib/stores/nutrition.svelte";
   import RecipeCard from "$lib/components/RecipeCard.svelte";
@@ -91,7 +92,7 @@
       },
       () => {
         nutritionStore.addFoodFromRecipe(recipe, servings);
-        goto("/food");
+        goto(`${base}/food`);
       },
     );
   }
@@ -113,7 +114,7 @@
           fiber_g: 0,
           water_ml,
         });
-        goto("/food");
+        goto(`${base}/food`);
       },
     );
   }
@@ -126,7 +127,7 @@
 <div class="p-4 space-y-4 pb-24">
   <!-- Header -->
   <div class="flex items-center gap-3">
-    <Button variant="ghost" size="icon-sm" onclick={() => goto("/food")}>
+    <Button variant="ghost" size="icon-sm" onclick={() => goto(`${base}/food`)}>
       <ArrowLeftIcon class="h-4 w-4" />
     </Button>
     <h1 class="text-lg font-bold tracking-tight">Add Food</h1>
@@ -251,7 +252,7 @@
       <Button
         variant="outline"
         size="sm"
-        onclick={() => goto("/food/recipes/new")}
+        onclick={() => goto(`${base}/food/recipes/new`)}
       >
         Create one
       </Button>

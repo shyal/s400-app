@@ -40,7 +40,7 @@
   function startWorkout() {
     workoutStore.startWorkout(nextType);
     toast.success("Workout started! Let's go!");
-    goto("/workout");
+    goto(`${base}/workout`);
   }
 
   const allExercisesComplete = $derived(
